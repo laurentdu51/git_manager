@@ -1,0 +1,28 @@
+{% extends "git_manager/base.html" %}
+{% block title %}Modifier Remote{% endblock %}
+{% block page_title %}Modifier le Remote{% endblock %}
+{% block content %}
+<div class="card" style="max-width:560px">
+    <div class="card-title">✏ {{ remote.repo.name }} → {{ remote.name }}</div>
+    <form method="post">
+        {% csrf_token %}
+        <div class="fg"><label class="fl">URL SSH</label><input type="text" name="url" class="fi" value="{{ remote.url }}" required></div>
+        <div class="fg"><label class="fl">Branche</label><input type="text" name="branch" class="fi" value="{{ remote.branch }}" required></div>
+        <div class="fg"><label class="fl">Clé SSH</label>
+            <select name="ssh_key_id" class="fi">
+                <option value="">— Aucune —</option>
+                {% for key in ssh_keys %}
+                <option value="{{ key.pk }}" {% if remote.ssh_key and remote.ssh_key.pk == key.pk %}selected{% endif %}>
+                    {{ key.name }} — {{ key.fingerprint|truncatechars:40 }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="fg"><label class="fc"><input type="checkbox" name="use_force" {% if remote.use_force %}checked{% endif %}> --force-with-lease</label></div>
+        <div style="display:flex;gap:9px;margin-top:5px">
+            <button type="submit" class="btn btn-p">💾 Sauvegarder</button>
+            <a href="{% url 'git_manager:remotes' %}" class="btn btn-s">Annuler</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

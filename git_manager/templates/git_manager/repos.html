@@ -1,0 +1,56 @@
+{% extends "git_manager/base.html" %}
+{% block title %}Dépôts{% endblock %}
+{% block page_title %}Dépôts Git{% endblock %}
+{% block content %}
+<div class="g2">
+    <div class="card">
+        <div class="card-title">＋ Ajouter un dépôt</div>
+        <form method="post" action="{% url 'git_manager:add_repo' %}">
+            {% csrf_token %}
+            <div class="fg"><label class="fl">Nom du projet</label><input type="text" name="name" class="fi" placeholder="mon-site, blog…" required></div>
+            <div class="fg"><label class="fl">Chemin local</label><input type="text" name="path" class="fi" placeholder="/app ou /repos/mon-site" required><p class="muted" style="margin-top:3px">Doit contenir un <code style="color:var(--accent2)">.git</code></p></div>
+            <div class="fg"><label class="fl">Description</label><input type="text" name="description" class="fi" placeholder="optionnel"></div>
+            <button type="submit" class="btn btn-p">＋ Ajouter</button>
+        </form>
+    </div>
+    <div class="card">
+        <div class="card-title">ℹ Chemins dans Docker</div>
+        <p class="muted" style="margin-bottom:8px;font-size:.8rem">Montez vos dépôts comme volumes :</p>
+        <pre class="code">volumes:
+  - /mnt/nas/mon-site:/repos/mon-site
+  - /mnt/nas/blog:/repos/blog</pre>
+        <p class="muted" style="margin-top:8px;font-size:.75rem">Puis utilisez <code style="color:var(--accent)">/repos/mon-site</code> comme chemin.</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-title">◻ Dépôts ({{ repos|length }})</div>
+    {% if repos %}
+    <table class="table">
+        <thead><tr><th>Nom</th><th>Chemin</th><th>Remotes</th><th>Description</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for repo in repos %}
+        <tr>
+            <td>
+                <a href="{% url 'git_manager:repo_detail' repo.pk %}" style="color:var(--text);text-decoration:none;font-weight:600">
+                    {{ repo.name }}
+                </a>
+            </td>
+            <td class="hash">{{ repo.path }}</td>
+            <td><span class="badge bw">{{ repo.remotes.count }}</span></td>
+            <td class="muted">{{ repo.description|default:"—" }}</td>
+            <td>
+                <div style="display:flex;gap:5px">
+                    <a href="{% url 'git_manager:repo_detail' repo.pk %}" class="btn btn-s" style="padding:3px 8px">🔍 Fiche</a>
+                    <form method="post" action="{% url 'git_manager:delete_repo' repo.pk %}" onsubmit="return confirm('Supprimer {{ repo.name }} ?')">
+                        {% csrf_token %}<button type="submit" class="btn btn-d" style="padding:3px 8px">✕</button>
+                    </form>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<p class="muted">Aucun dépôt configuré.</p>{% endif %}
+</div>
+{% endblock %}

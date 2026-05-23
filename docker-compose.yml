@@ -1,0 +1,28 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: git_manager
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - sqlite_data:/app/data
+      - ssh_keys:/root/.ssh
+      # Montez vos dépôts git ici :
+      # - /mnt/nas/mon-site:/repos/mon-site
+      # - /mnt/nas/blog:/repos/blog
+      - ${REPOS_PATH}:/repos
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    ports:
+      - "${APP_PORT:-8000}:8000"
+      - "${SSH_PORT:-2222}:22"
+
+volumes:
+  sqlite_data:
+  ssh_keys:

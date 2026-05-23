@@ -1,0 +1,124 @@
+{% extends "git_manager/base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block content %}
+<div style="display:flex;gap:16px;margin-bottom:18px;align-items:center">
+    <label class="fc">
+        <input type="checkbox" id="autoRefresh" onchange="toggleDashboardRefresh()">
+        Auto-refresh (30s)
+    </label>
+    <span id="refreshCountdown" class="muted" style="font-size:.7rem"></span>
+</div>
+
+<div class="g4" style="margin-bottom:18px">
+    <div class="stat"><div class="stat-v" style="color:var(--accent2)">{{ total_repos }}</div><div class="stat-l">Dépôts</div></div>
+    <div class="stat"><div class="stat-v" style="color:var(--accent)">{{ total_pushes }}</div><div class="stat-l">Pushs total</div></div>
+    <div class="stat"><div class="stat-v" style="color:var(--accent)">{{ success_pushes }}</div><div class="stat-l">Succès</div></div>
+    <div class="stat"><div class="stat-v" style="color:var(--danger)">{{ error_pushes }}</div><div class="stat-l">Erreurs</div></div>
+</div>
+
+{% for rd in repos_data %}
+<div class="card">
+    <div class="card-title" style="justify-content:space-between">
+        <span>
+            <a href="{% url 'git_manager:repo_detail' rd.repo.pk %}" style="color:var(--text);text-decoration:none">
+                ◻ {{ rd.repo.name }}
+            </a>
+            {% if rd.is_git %}<span class="badge bs" style="margin-left:6px">git ✓</span>
+            {% else %}<span class="badge be" style="margin-left:6px">pas de repo</span>{% endif %}
+        </span>
+        <div style="display:flex;align-items:center;gap:10px">
+            <span class="hash">{{ rd.repo.path }}</span>
+            <a href="{% url 'git_manager:repo_detail' rd.repo.pk %}" class="btn btn-s" style="padding:3px 8px;font-size:.7rem">🔍 Fiche</a>
+        </div>
+    </div>
+    <div class="g2">
+        <div>
+            {% if rd.last_commit %}
+            <p style="font-size:.81rem;margin-bottom:3px"><span class="hash">{{ rd.last_commit.hash }}</span> <strong style="margin-left:6px">{{ rd.last_commit.message }}</strong></p>
+            <p class="muted">{{ rd.last_commit.author }} · {{ rd.last_commit.date }}</p>
+            {% endif %}
+            {% if rd.branch %}<p class="muted" style="margin-top:5px">⎇ {{ rd.branch }}</p>{% endif %}
+        </div>
+        <div>
+            {% if rd.status and rd.status.stdout %}
+            <pre class="code" style="max-height:75px;overflow-y:auto;font-size:.68rem">{{ rd.status.stdout }}</pre>
+            {% else %}<p class="muted">✓ Répertoire propre</p>{% endif %}
+        </div>
+    </div>
+    {% if rd.remotes %}
+    <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:7px">
+        {% for remote in rd.remotes %}
+        <form method="post" action="{% url 'git_manager:push_now' %}">
+            {% csrf_token %}
+            <input type="hidden" name="remote_id" value="{{ remote.pk }}">
+            <input type="hidden" name="next" value="{% url 'git_manager:repo_detail' rd.repo.pk %}">
+            <button type="submit" class="btn btn-p">⬆ {{ rd.repo.name }} → {{ remote.name }}/{{ remote.branch }}</button>
+        </form>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted" style="margin-top:10px">Aucun remote. <a href="{% url 'git_manager:remotes' %}" style="color:var(--accent2)">En ajouter →</a></p>
+    {% endif %}
+</div>
+{% empty %}
+<div class="card"><p class="muted">Aucun dépôt. <a href="{% url 'git_manager:repos' %}" style="color:var(--accent2)">Ajouter un dépôt →</a></p></div>
+{% endfor %}
+
+<div class="card">
+    <div class="card-title" style="justify-content:space-between">
+        <span>≡ Derniers pushs</span>
+        <a href="{% url 'git_manager:logs' %}" class="btn btn-s" style="padding:3px 8px;font-size:.68rem">Tout voir</a>
+    </div>
+    {% if recent_logs %}
+    <table class="table">
+        <thead><tr><th>Status</th><th>Dépôt</th><th>Remote</th><th>Branche</th><th>Commit</th><th>Date</th></tr></thead>
+        <tbody>
+        {% for log in recent_logs %}
+        <tr>
+            <td><span class="badge {% if log.status == 'success' %}bs{% elif log.status == 'error' %}be{% else %}bw{% endif %}">{{ log.get_status_display }}</span></td>
+            <td>
+                {% if log.repo %}
+                <a href="{% url 'git_manager:repo_detail' log.repo.pk %}" style="color:var(--accent2)">{{ log.repo_name }}</a>
+                {% else %}{{ log.repo_name|default:"—" }}{% endif %}
+            </td>
+            <td>{{ log.remote_name }}</td>
+            <td><span style="color:var(--accent)">{{ log.branch }}</span></td>
+            <td><span class="hash">{{ log.commit_hash|truncatechars:8|default:"—" }}</span></td>
+            <td class="muted">{{ log.created_at|date:"d/m H:i" }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<p class="muted">Aucun push.</p>{% endif %}
+</div>
+
+<script>
+let dashboardRefreshTimer = null;
+let dashboardCountdownTimer = null;
+let dashboardSecondsLeft = 0;
+
+function toggleDashboardRefresh() {
+    const cb = document.getElementById('autoRefresh');
+    if (cb.checked) {
+        dashboardSecondsLeft = 30;
+        updateCountdown();
+        dashboardCountdownTimer = setInterval(() => {
+            dashboardSecondsLeft--;
+            if (dashboardSecondsLeft <= 0) dashboardSecondsLeft = 30;
+            updateCountdown();
+        }, 1000);
+        dashboardRefreshTimer = setInterval(() => location.reload(), 30000);
+    } else {
+        clearInterval(dashboardRefreshTimer);
+        clearInterval(dashboardCountdownTimer);
+        document.getElementById('refreshCountdown').textContent = '';
+    }
+}
+
+function updateCountdown() {
+    document.getElementById('refreshCountdown').textContent =
+        '⟳ Rechargement dans ' + dashboardSecondsLeft + 's';
+}
+</script>
+{% endblock %}

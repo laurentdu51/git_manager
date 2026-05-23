@@ -1,0 +1,89 @@
+{% extends "git_manager/base.html" %}
+{% block title %}Remotes{% endblock %}
+{% block page_title %}Remotes Git{% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-title">＋ Ajouter un remote</div>
+    <form method="post" action="{% url 'git_manager:add_remote' %}">
+        {% csrf_token %}
+        <div class="g2">
+            <div>
+                <div class="fg"><label class="fl">Dépôt</label>
+                    <select name="repo_id" class="fi" required>
+                        <option value="">— Choisir —</option>
+                        {% for repo in repos %}<option value="{{ repo.pk }}">{{ repo.name }} ({{ repo.path }})</option>{% endfor %}
+                    </select>
+                    {% if not repos %}<p class="muted" style="margin-top:3px">⚠ <a href="{% url 'git_manager:repos' %}" style="color:var(--accent2)">Créer un dépôt →</a></p>{% endif %}
+                </div>
+                <div class="fg"><label class="fl">Nom du remote</label><input type="text" name="name" class="fi" placeholder="origin, github…" required></div>
+                <div class="fg"><label class="fl">URL SSH</label><input type="text" name="url" class="fi" placeholder="git@github.com:user/repo.git" required></div>
+            </div>
+            <div>
+                <div class="fg"><label class="fl">Branche cible</label><input type="text" name="branch" class="fi" value="main" required></div>
+                <div class="fg"><label class="fl">Clé SSH</label>
+                    <select name="ssh_key_id" class="fi">
+                        <option value="">— Aucune —</option>
+                        {% for key in ssh_keys %}<option value="{{ key.pk }}">{{ key.name }} — {{ key.fingerprint|truncatechars:35 }}</option>{% endfor %}
+                    </select>
+                    {% if not key_exists %}<p class="muted" style="margin-top:3px">⚠ <a href="{% url 'git_manager:ssh' %}" style="color:var(--accent2)">Créer une clé →</a></p>{% endif %}
+                </div>
+                <div class="fg"><label class="fc"><input type="checkbox" name="use_force"> --force-with-lease</label></div>
+                <button type="submit" class="btn btn-p">＋ Ajouter</button>
+            </div>
+        </div>
+    </form>
+</div>
+
+{% for repo in repos %}{% if repo.remotes.all %}
+<div class="card">
+    <div class="card-title">◻ {{ repo.name }} <span class="hash" style="font-size:.7rem;margin-left:5px">{{ repo.path }}</span></div>
+    <table class="table">
+        <thead><tr><th>Remote</th><th>URL</th><th>Branche</th><th>Clé SSH</th><th>Force</th><th>Actions</th></tr></thead>
+        <tbody>
+        {% for remote in repo.remotes.all %}
+        <tr>
+            <td><strong>{{ remote.name }}</strong></td>
+            <td class="hash">{{ remote.url|truncatechars:50 }}</td>
+            <td><span style="color:var(--accent)">{{ remote.branch }}</span></td>
+            <td>{% if remote.ssh_key %}<span class="badge bs">🔑 {{ remote.ssh_key.name }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td>{% if remote.use_force %}<span class="badge bw">oui</span>{% else %}—{% endif %}</td>
+            <td>
+                <div style="display:flex;gap:5px;flex-wrap:wrap">
+                    <button onclick="testRemote({{ remote.pk }})" class="btn btn-s" id="tb-{{ remote.pk }}" style="padding:3px 8px">⚡ Test</button>
+                    <a href="{% url 'git_manager:edit_remote' remote.pk %}" class="btn btn-w" style="padding:3px 8px">✏</a>
+                    <form method="post" action="{% url 'git_manager:delete_remote' remote.pk %}" onsubmit="return confirm('Supprimer ?')">
+                        {% csrf_token %}<button type="submit" class="btn btn-d" style="padding:3px 8px">✕</button>
+                    </form>
+                </div>
+                <div id="tr-{{ remote.pk }}" style="display:none;margin-top:5px">
+                    <pre class="code" id="to-{{ remote.pk }}" style="font-size:.67rem;max-height:50px;overflow-y:auto"></pre>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}{% empty %}
+<div class="card"><p class="muted">Aucun dépôt. <a href="{% url 'git_manager:repos' %}" style="color:var(--accent2)">Créer →</a></p></div>
+{% endfor %}
+
+<script>
+function testRemote(pk) {
+    const btn = document.getElementById('tb-'+pk);
+    btn.textContent = '⏳'; btn.disabled = true;
+    fetch(`/remotes/${pk}/test/`).then(r=>r.json()).then(d=>{
+        const rd = document.getElementById('tr-'+pk);
+        const op = document.getElementById('to-'+pk);
+        rd.style.display = 'block';
+        op.style.color = d.success ? 'var(--accent)' : 'var(--danger)';
+        op.textContent = (d.success ? '✅ ' : '❌ ') + d.output;
+        btn.textContent = '⚡ Test'; btn.disabled = false;
+    }).catch(e=>{
+        document.getElementById('tr-'+pk).style.display='block';
+        document.getElementById('to-'+pk).textContent='❌ '+e;
+        btn.textContent='⚡ Test'; btn.disabled=false;
+    });
+}
+</script>
+{% endblock %}

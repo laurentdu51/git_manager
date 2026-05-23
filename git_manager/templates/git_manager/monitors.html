@@ -1,0 +1,107 @@
+{% extends 'git_manager/base.html' %}
+
+{% block title %}Surveillance - Git Manager{% endblock %}
+{% block page_title %}Surveillance des Remotes{% endblock %}
+
+{% block content %}
+<style>
+    .alert-card { padding: 14px 18px; border-radius: 10px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; }
+    .alert-ahead { background: rgba(74,222,128,.15); border: 1px solid rgba(74,222,128,.3); }
+    .alert-behind { background: rgba(251,146,60,.15); border: 1px solid rgba(251,146,60,.3); }
+    .alert-diverged { background: rgba(248,113,113,.15); border: 1px solid rgba(248,113,113,.3); }
+    .alert-ok { background: rgba(34,211,238,.1); border: 1px solid rgba(34,211,238,.2); }
+    .status-badge { padding: 4px 10px; border-radius: 20px; font-size: .7rem; font-weight: 700; text-transform: uppercase; }
+    .bs-ok { background: rgba(34,211,238,.2); color: #22d3ee; }
+    .bs-ahead { background: rgba(74,222,128,.2); color: #4ade80; }
+    .bs-behind { background: rgba(251,146,60,.2); color: #fb923c; }
+    .bs-diverged { background: rgba(248,113,113,.2); color: #f87171; }
+    .commit-num { font-weight: 700; font-size: .9rem; }
+</style>
+
+<div class="g2" style="margin-bottom: 20px;">
+    <div class="card">
+        <div class="card-title">🔄 Dernière vérification</div>
+        <button onclick="checkRemotes()" class="btn btn-p" style="margin-top:8px">Vérifier maintenant</button>
+    </div>
+    <div class="card">
+        <div class="card-title">⚡ Auto-refresh</div>
+        <label class="fc">
+            <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()">
+            Actualiser toutes les 5 minutes
+        </label>
+    </div>
+</div>
+
+<div id="alerts-container"></div>
+
+<div class="card">
+    <div class="card-title">📊 État des Remotes</div>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Dépôt</th>
+                <th>Remote</th>
+                <th>Branche</th>
+                <th>Status</th>
+                <th>En avance</th>
+                <th>En retard</th>
+                <th>Dernière vérif.</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in monitors %}
+            <tr>
+                <td>{{ m.remote.repo.name }}</td>
+                <td>{{ m.remote.name }}</td>
+                <td>{{ m.remote.branch }}</td>
+                <td>
+                    <span class="status-badge bs-{{ m.status }}">{{ m.get_status_display }}</span>
+                </td>
+                <td class="commit-num" style="color: var(--accent)">{{ m.commits_ahead }}</td>
+                <td class="commit-num" style="color: var(--warn)">{{ m.commits_behind }}</td>
+                <td class="muted">{{ m.last_check|default:"-" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="muted">Aucun remote surveillé</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+let autoRefreshInterval = null;
+
+function checkRemotes() {
+    fetch('/api/check-remotes/')
+        .then(r => r.json())
+        .then(data => {
+            const container = document.getElementById('alerts-container');
+            if (data.count === 0) {
+                container.innerHTML = '';
+                return;
+            }
+            container.innerHTML = data.alerts.map(a => `
+                <div class="alert-card alert-${a.status}">
+                    <span class="status-badge bs-${a.status}">${a.status}</span>
+                    <strong>${a.repo}</strong> / ${a.remote} (${a.branch})
+                    <span style="margin-left:auto">
+                        ↑${a.ahead} ↓${a.behind}
+                    </span>
+                </div>
+            `).join('');
+        });
+}
+
+function toggleAutoRefresh() {
+    const checkbox = document.getElementById('autoRefresh');
+    if (checkbox.checked) {
+        autoRefreshInterval = setInterval(checkRemotes, 5 * 60 * 1000);
+    } else {
+        clearInterval(autoRefreshInterval);
+    }
+}
+
+// Check au chargement
+checkRemotes();
+</script>
+{% endblock %}

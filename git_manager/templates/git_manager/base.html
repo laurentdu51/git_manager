@@ -1,0 +1,46 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Git Manager{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'git_manager/css/style.css' %}">
+</head>
+<body>
+<nav class="sidebar">
+    <div class="logo"><h1>⬡ Git Manager</h1><span>Relai multi-repo</span></div>
+    <div class="nav">
+        <span class="nav-section">Navigation</span>
+        <a href="{% url 'git_manager:dashboard' %}" class="{% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">◈ Dashboard</a>
+        <a href="{% url 'git_manager:repos' %}" class="{% if request.resolver_match.url_name == 'repos' %}active{% endif %}">◻ Dépôts</a>
+        <!-- Sous-liste des dépôts chargée dynamiquement -->
+        <div class="nav-sub" id="nav-repos-sub"></div>
+        <a href="{% url 'git_manager:remotes' %}" class="{% if 'remote' in request.resolver_match.url_name %}active{% endif %}">⇄ Remotes</a>
+
+        <span class="nav-section">Logs</span>
+        <a href="{% url 'git_manager:logs' %}" class="{% if request.resolver_match.url_name == 'logs' %}active{% endif %}">≡ Logs pushs</a>
+        <a href="{% url 'git_manager:file_logs' %}" class="{% if request.resolver_match.url_name == 'file_logs' %}active{% endif %}">📄 Logs fichier</a>
+
+        <span class="nav-section">SSH</span>
+        <a href="{% url 'git_manager:ssh' %}" class="{% if request.resolver_match.url_name == 'ssh' %}active{% endif %}">🔑 Clés SSH relai</a>
+        <a href="{% url 'git_manager:ssh_local' %}" class="{% if request.resolver_match.url_name == 'ssh_local' %}active{% endif %}">💻 Config SSH local</a>
+    </div>
+</nav>
+<main class="main">
+    <div class="topbar">
+        <h2>{% block page_title %}{% endblock %}</h2>
+        <div style="display:flex;align-items:center;gap:12px">
+            <button onclick="toggleTheme()" class="btn btn-s" style="padding:6px 10px;font-size:1rem" title="Changer de thème">🌗</button>
+            <span class="muted">Git Manager v2</span>
+        </div>
+    </div>
+    <div class="content">
+        {% if messages %}<div class="msgs">{% for m in messages %}<div class="msg msg-{{ m.tags }}">{% if m.tags == 'success' %}✅{% else %}❌{% endif %} {{ m }}</div>{% endfor %}</div>{% endif %}
+        {% block content %}{% endblock %}
+    </div>
+</main>
+<script src="{% static 'git_manager/js/app.js' %}"></script>
+</body>
+</html>

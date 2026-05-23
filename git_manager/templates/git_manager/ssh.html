@@ -1,0 +1,308 @@
+{% extends "git_manager/base.html" %}
+{% block title %}Clés SSH{% endblock %}
+{% block page_title %}Clés SSH Relai{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <div class="card-title" style="justify-content:space-between">
+        <span>🔑 Clés SSH ({{ ssh_keys|length }})</span>
+        <div style="display:flex;gap:7px">
+            <button onclick="showPanel('generate')" class="btn btn-p">＋ Générer</button>
+            <button onclick="showPanel('upload')" class="btn btn-w">⬆ Importer</button>
+        </div>
+    </div>
+
+    {% if ssh_keys %}
+    <table class="table">
+        <thead>
+            <tr><th>Nom</th><th>Empreinte</th><th>Clé publique</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+        {% for key in ssh_keys %}
+        <tr id="row-{{ key.name }}">
+            <!-- Nom / renommage inline -->
+            <td>
+                <span id="name-display-{{ key.name }}">
+                    <strong>{{ key.name }}</strong>
+                    <button onclick="toggleRename('{{ key.name }}')"
+                        class="btn btn-s" style="padding:2px 7px;font-size:.65rem;margin-left:6px">✏</button>
+                </span>
+                <span id="name-edit-{{ key.name }}" style="display:none">
+                    <form method="post" action="{% url 'git_manager:ssh_rename' key.name %}"
+                        style="display:flex;gap:5px;align-items:center">
+                        {% csrf_token %}
+                        <input type="text" name="new_name" value="{{ key.name }}"
+                            class="fi" style="width:140px;padding:3px 8px;font-size:.75rem">
+                        <button type="submit" class="btn btn-p" style="padding:3px 8px;font-size:.7rem">✓</button>
+                        <button type="button" onclick="toggleRename('{{ key.name }}')"
+                            class="btn btn-s" style="padding:3px 8px;font-size:.7rem">✕</button>
+                    </form>
+                </span>
+            </td>
+
+            <!-- Empreinte masquée -->
+            <td>
+                <span id="fp-masked-{{ key.name }}" class="muted" style="letter-spacing:.08em">••••••••••••••</span>
+                <span id="fp-full-{{ key.name }}" style="display:none">
+                    <span class="hash" style="font-size:.64rem">{{ key.fingerprint|default:"—" }}</span>
+                </span>
+                <button onclick="toggleFp('{{ key.name }}')" id="fp-btn-{{ key.name }}"
+                    class="btn btn-s" style="padding:1px 6px;font-size:.62rem;margin-left:4px">👁</button>
+            </td>
+
+            <!-- Clé publique masquée -->
+            <td>
+                <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+                    <code id="pubkey-masked-{{ key.name }}"
+                        style="font-size:.64rem;color:var(--muted);letter-spacing:.08em">
+                        ••••••••••••••••••••••••••••••••
+                    </code>
+                    <code id="pubkey-full-{{ key.name }}"
+                        style="display:none;font-size:.6rem;color:var(--accent);word-break:break-all;max-width:200px">{{ key.public_key }}</code>
+                    <button onclick="togglePubKey('{{ key.name }}')" id="reveal-btn-{{ key.name }}"
+                        class="btn btn-s" style="padding:2px 7px;font-size:.63rem;white-space:nowrap">👁 Voir</button>
+                    <button onclick="copyText('{{ key.public_key|escapejs }}', this)"
+                        class="btn btn-s" style="padding:2px 7px;font-size:.63rem">📋</button>
+                </div>
+            </td>
+
+            <!-- Actions -->
+            <td>
+                <div style="display:flex;gap:5px;flex-wrap:wrap">
+                    <button onclick="testKey('{{ key.name }}', 'github.com')"
+                        class="btn btn-s" id="tg-{{ key.name }}" style="padding:3px 8px">⚡ GitHub</button>
+                    <button onclick="testKey('{{ key.name }}', 'gitlab.com')"
+                        class="btn btn-s" id="tl-{{ key.name }}" style="padding:3px 8px">⚡ GitLab</button>
+                    <form method="post" action="{% url 'git_manager:ssh_delete' key.name %}"
+                        onsubmit="return confirm('Supprimer la clé {{ key.name }} ?')">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-d" style="padding:3px 8px">✕</button>
+                    </form>
+                </div>
+                <div id="tr-{{ key.name }}" style="display:none;margin-top:5px">
+                    <pre class="code" id="to-{{ key.name }}"
+                        style="font-size:.68rem;max-height:50px;overflow-y:auto"></pre>
+                </div>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Aucune clé SSH. Générez-en une ou importez une clé existante.</p>
+    {% endif %}
+</div>
+
+<!-- État des remotes -->
+{% if remotes_status %}
+<div class="card">
+    <div class="card-title" style="justify-content:space-between">
+        <span>⇄ État des remotes</span>
+        <button onclick="checkAllRemotes()" class="btn btn-s" style="padding:3px 9px;font-size:.72rem">🔄 Vérifier tout</button>
+    </div>
+    <table class="table">
+        <thead><tr><th>Dépôt</th><th>Remote</th><th>URL</th><th>Clé</th><th>État</th></tr></thead>
+        <tbody>
+        {% for rs in remotes_status %}
+        <tr>
+            <td><a href="{% url 'git_manager:repo_detail' rs.remote.repo.pk %}" style="color:var(--accent2)">{{ rs.remote.repo.name }}</a></td>
+            <td><strong>{{ rs.remote.name }}</strong></td>
+            <td class="hash" style="font-size:.65rem">{{ rs.remote.url|truncatechars:45 }}</td>
+            <td>{% if rs.remote.ssh_key %}<span class="badge bs" style="font-size:.62rem">🔑 {{ rs.remote.ssh_key.name }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td id="remote-status-{{ rs.remote.pk }}">
+                <button onclick="checkRemote({{ rs.remote.pk }})"
+                    class="btn btn-s" id="check-btn-{{ rs.remote.pk }}"
+                    style="padding:3px 8px;font-size:.7rem">🔍 Vérifier</button>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<div class="g2">
+    <!-- Générer -->
+    <div id="panel-generate" style="display:none" class="card">
+        <div class="card-title" style="justify-content:space-between">
+            <span>⚙ Générer une nouvelle clé</span>
+            <button onclick="hidePanel('generate')" class="btn btn-s" style="padding:3px 8px">✕</button>
+        </div>
+        <form method="post" action="{% url 'git_manager:ssh_generate' %}">
+            {% csrf_token %}
+            <div class="fg">
+                <label class="fl">Nom de la clé</label>
+                <input type="text" name="name" class="fi" placeholder="id_ed25519, github_perso…" required>
+                <p class="muted" style="margin-top:3px">Fichier : <code style="color:var(--accent2)">/root/.ssh/{nom}</code></p>
+            </div>
+            <div class="fg">
+                <label class="fl">Commentaire</label>
+                <input type="text" name="comment" class="fi" value="git-manager">
+            </div>
+            <div class="fg">
+                <label class="fc"><input type="checkbox" name="overwrite" value="yes"> Écraser si existe</label>
+            </div>
+            <button type="submit" class="btn btn-p">⚙ Générer ed25519</button>
+        </form>
+    </div>
+
+    <!-- Importer -->
+    <div id="panel-upload" style="display:none" class="card">
+        <div class="card-title" style="justify-content:space-between">
+            <span>⬆ Importer une clé existante</span>
+            <button onclick="hidePanel('upload')" class="btn btn-s" style="padding:3px 8px">✕</button>
+        </div>
+        <form method="post" action="{% url 'git_manager:ssh_upload' %}">
+            {% csrf_token %}
+            <div class="fg">
+                <label class="fl">Nom de la clé</label>
+                <input type="text" name="name" class="fi" placeholder="id_ed25519, github_perso…" required>
+            </div>
+            <div class="fg">
+                <label class="fl">Clé privée</label>
+                <textarea name="private_key" class="fi" rows="8"
+                    placeholder="-----BEGIN OPENSSH PRIVATE KEY-----
+...
+-----END OPENSSH PRIVATE KEY-----"
+                    style="font-size:.7rem;resize:vertical"></textarea>
+            </div>
+            <div class="fg">
+                <label class="fc"><input type="checkbox" name="overwrite" value="yes"> Écraser si existe</label>
+            </div>
+            <button type="submit" class="btn btn-w">⬆ Importer</button>
+        </form>
+    </div>
+</div>
+
+<!-- Fallback copie HTTP (clipboard non dispo sans HTTPS) -->
+<div id="copy-fallback" style="display:none;position:fixed;bottom:20px;right:20px;z-index:9999;
+    background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;
+    max-width:420px;box-shadow:0 4px 20px rgba(0,0,0,.4)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:.78rem;font-weight:600;color:var(--text)">📋 Copier la clé publique</span>
+        <button onclick="document.getElementById('copy-fallback').style.display='none'"
+            class="btn btn-s" style="padding:2px 7px;font-size:.7rem">✕</button>
+    </div>
+    <textarea id="copy-fallback-text" class="fi" rows="4"
+        style="font-size:.68rem;resize:none" onclick="this.select()" readonly></textarea>
+    <p class="muted" style="margin-top:6px;font-size:.72rem">Cliquez dans la zone → Ctrl+A → Ctrl+C</p>
+</div>
+
+<script>
+// ── Copie compatible HTTP ─────────────────────────────────────────────────
+function copyText(text, btn) {
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+            const o = btn.textContent; btn.textContent = '✅';
+            setTimeout(() => btn.textContent = o, 2000);
+        }).catch(() => showFallback(text, btn));
+    } else {
+        showFallback(text, btn);
+    }
+}
+function showFallback(text, btn) {
+    const fb = document.getElementById('copy-fallback');
+    const ta = document.getElementById('copy-fallback-text');
+    ta.value = text;
+    fb.style.display = 'block';
+    ta.focus(); ta.select();
+    try { document.execCommand('copy'); } catch(e) {}
+    if (btn) {
+        const o = btn.textContent; btn.textContent = '✅';
+        setTimeout(() => btn.textContent = o, 2000);
+    }
+}
+
+// ── Révéler / masquer clé publique ────────────────────────────────────────
+function togglePubKey(name) {
+    const m = document.getElementById('pubkey-masked-' + name);
+    const f = document.getElementById('pubkey-full-' + name);
+    const b = document.getElementById('reveal-btn-' + name);
+    const h = f.style.display === 'none';
+    m.style.display = h ? 'none' : 'inline';
+    f.style.display = h ? 'inline' : 'none';
+    b.textContent = h ? '🙈 Masquer' : '👁 Voir';
+}
+
+// ── Révéler / masquer empreinte ───────────────────────────────────────────
+function toggleFp(name) {
+    const m = document.getElementById('fp-masked-' + name);
+    const f = document.getElementById('fp-full-' + name);
+    const b = document.getElementById('fp-btn-' + name);
+    const h = f.style.display === 'none';
+    m.style.display = h ? 'none' : 'inline';
+    f.style.display = h ? 'inline' : 'none';
+    b.textContent = h ? '🙈' : '👁';
+}
+
+// ── Renommer inline ───────────────────────────────────────────────────────
+function toggleRename(name) {
+    const d = document.getElementById('name-display-' + name);
+    const e = document.getElementById('name-edit-' + name);
+    const editing = e.style.display !== 'none';
+    d.style.display = editing ? 'inline' : 'none';
+    e.style.display = editing ? 'none' : 'inline-flex';
+    if (!editing) e.querySelector('input').focus();
+}
+
+// ── Panneaux ─────────────────────────────────────────────────────────────
+function showPanel(name) {
+    ['generate', 'upload'].forEach(p => {
+        document.getElementById('panel-' + p).style.display = p === name ? 'block' : 'none';
+    });
+    document.getElementById('panel-' + name).scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+function hidePanel(name) {
+    document.getElementById('panel-' + name).style.display = 'none';
+}
+
+// ── Test SSH ─────────────────────────────────────────────────────────────
+function testKey(name, host) {
+    const bid = host === 'github.com' ? 'tg-' : 'tl-';
+    const btn = document.getElementById(bid + name);
+    btn.textContent = '⏳'; btn.disabled = true;
+    fetch(`/ssh/test/?name=${encodeURIComponent(name)}&host=${host}`)
+        .then(r => r.json())
+        .then(d => {
+            const tr = document.getElementById('tr-' + name);
+            const to = document.getElementById('to-' + name);
+            tr.style.display = 'block';
+            to.style.color = d.success ? 'var(--accent)' : 'var(--danger)';
+            to.textContent = (d.success ? '✅ ' : '❌ ') + d.output;
+            btn.textContent = host === 'github.com' ? '⚡ GitHub' : '⚡ GitLab';
+            btn.disabled = false;
+        }).catch(e => {
+            document.getElementById('tr-' + name).style.display = 'block';
+            document.getElementById('to-' + name).textContent = '❌ ' + e;
+            btn.textContent = host === 'github.com' ? '⚡ GitHub' : '⚡ GitLab';
+            btn.disabled = false;
+        });
+}
+
+// ── Check remote ─────────────────────────────────────────────────────────
+function checkRemote(pk) {
+    const c = document.getElementById('remote-status-' + pk);
+    c.innerHTML = '<span class="muted" style="font-size:.72rem">⏳</span>';
+    fetch(`/remotes/${pk}/test/`)
+        .then(r => r.json())
+        .then(d => {
+            const badge = d.success
+                ? '<span class="badge bs">✅ OK</span>'
+                : '<span class="badge be">❌ Inaccessible</span>';
+            const detail = `<div style="font-size:.63rem;margin-top:3px;color:${d.success ? 'var(--accent)' : 'var(--danger)'};max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.output}</div>`;
+            const rebtn = `<button onclick="checkRemote(${pk})" class="btn btn-s" style="padding:2px 5px;font-size:.62rem;margin-top:3px">🔄</button>`;
+            c.innerHTML = badge + detail + rebtn;
+        }).catch(() => {
+            c.innerHTML = '<span class="badge be">❌ Erreur réseau</span>';
+        });
+}
+
+function checkAllRemotes() {
+    document.querySelectorAll('[id^="remote-status-"]').forEach(el => {
+        const pk = el.id.replace('remote-status-', '');
+        if (pk && !isNaN(pk)) checkRemote(parseInt(pk));
+    });
+}
+</script>
+{% endblock %}

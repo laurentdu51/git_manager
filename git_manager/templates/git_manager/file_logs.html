@@ -1,0 +1,56 @@
+{% extends "git_manager/base.html" %}
+{% block title %}Logs fichier{% endblock %}
+{% block page_title %}Logs fichier (temps réel){% endblock %}
+{% block content %}
+<div class="card">
+    <div class="card-title" style="justify-content:space-between">
+        <span>📄 /app/data/git_manager.log</span>
+        <div style="display:flex;gap:7px;align-items:center">
+            <span id="rs" class="muted" style="font-size:.7rem"></span>
+            <button onclick="toggleRefresh()" class="btn btn-s" id="br" style="padding:3px 8px">⏸ Pause</button>
+            <button onclick="clearDisplay()" class="btn btn-w" style="padding:3px 8px">🗑 Effacer</button>
+        </div>
+    </div>
+    <div id="lc" style="background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:12px;height:520px;overflow-y:auto;font-family:var(--mono);font-size:.7rem;line-height:1.7">
+        {% for line in lines %}
+        <div class="ll {% if 'ERROR' in line %}le{% elif 'WARNING' in line %}lw{% elif 'INFO' in line %}li{% endif %}">{{ line }}</div>
+        {% empty %}
+        <div class="muted">Aucun log pour l'instant. Les actions apparaîtront ici.</div>
+        {% endfor %}
+    </div>
+</div>
+<style>
+.le { color: var(--danger) }
+.lw { color: var(--warn) }
+.li { color: var(--accent2) }
+.ll { color: var(--text) }
+</style>
+<script>
+let auto = true, lastCount = {{ lines|length }};
+function colorize(l) {
+    const c = l.includes('ERROR') ? 'le' : l.includes('WARNING') ? 'lw' : l.includes('INFO') ? 'li' : 'll';
+    return '<div class="ll ' + c + '">' + l.replace(/</g, '&lt;') + '</div>';
+}
+function fetchLogs() {
+    if (!auto) return;
+    fetch('{% url "git_manager:file_logs_raw" %}').then(r => r.json()).then(d => {
+        if (d.lines.length !== lastCount) {
+            lastCount = d.lines.length;
+            const c = document.getElementById('lc');
+            c.innerHTML = d.lines.map(colorize).join('') || '<div class="muted">Aucun log.</div>';
+            c.scrollTop = c.scrollHeight;
+            document.getElementById('rs').textContent = 'Màj ' + new Date().toLocaleTimeString();
+        }
+    });
+}
+function toggleRefresh() {
+    auto = !auto;
+    document.getElementById('br').textContent = auto ? '⏸ Pause' : '▶ Reprendre';
+}
+function clearDisplay() {
+    document.getElementById('lc').innerHTML = '<div class="muted">Affichage effacé (fichier intact).</div>';
+}
+setInterval(fetchLogs, 3000);
+document.getElementById('lc').scrollTop = document.getElementById('lc').scrollHeight;
+</script>
+{% endblock %}

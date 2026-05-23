@@ -1,0 +1,374 @@
+{% extends "git_manager/base.html" %}
+{% block title %}{{ repo.name }} — Git Manager{% endblock %}
+{% block page_title %}◻ {{ repo.name }}{% endblock %}
+
+{% block content %}
+
+<!-- En-tête dépôt -->
+<div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
+                {% if is_git %}
+                <span class="badge bs">git ✓</span>
+                {% if branch %}<span style="color:var(--accent2);font-size:.85rem">⎇ {{ branch }}</span>{% endif %}
+                {% else %}
+                <span class="badge be">⚠ Pas de repo git</span>
+                {% endif %}
+            </div>
+            <span class="hash">{{ repo.path }}</span>
+            {% if repo.description %}<p class="muted" style="margin-top:4px">{{ repo.description }}</p>{% endif %}
+        </div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+            {% for remote in remotes %}
+            <button onclick="fetchRemote({{ remote.pk }},'{{ remote.name }}')" class="btn btn-s" id="fb-{{ remote.pk }}" style="padding:5px 10px">⬇ Fetch {{ remote.name }}</button>
+            <button onclick="pullRemote({{ remote.pk }},'{{ remote.name }}')" class="btn btn-s" id="pb-{{ remote.pk }}" style="padding:5px 10px">⬇ Pull {{ remote.name }}</button>
+            <form method="post" action="{% url 'git_manager:push_now' %}">
+                {% csrf_token %}
+                <input type="hidden" name="remote_id" value="{{ remote.pk }}">
+                <input type="hidden" name="next" value="{% url 'git_manager:repo_detail' repo.pk %}">
+                <button type="submit" class="btn btn-p">⬆ Push → {{ remote.name }}/{{ remote.branch }}</button>
+            </form>
+            {% endfor %}
+            <a href="{% url 'git_manager:repos' %}" class="btn btn-s">← Dépôts</a>
+        </div>
+    </div>
+</div>
+
+<div class="g2">
+
+    <!-- Historique Git local -->
+    <div class="card">
+        <div class="card-title">◷ Historique Git (10 derniers commits)</div>
+        {% if git_log %}
+        <table class="table">
+            <thead><tr><th>Hash</th><th>Message</th><th>Auteur</th><th>Date</th></tr></thead>
+            <tbody>
+            {% for commit in git_log %}
+            <tr>
+                <td><span class="hash">{{ commit.hash }}</span></td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ commit.message }}</td>
+                <td class="muted">{{ commit.author }}</td>
+                <td class="muted">{{ commit.date_relative }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% elif is_git %}
+        <p class="muted">Aucun commit.</p>
+        {% else %}
+        <p class="muted">Répertoire non initialisé en Git.</p>
+        {% endif %}
+    </div>
+
+    <!-- Statut + remotes -->
+    <div>
+        <!-- Statut git -->
+        <div class="card">
+            <div class="card-title">◎ Statut</div>
+            {% if git_status and git_status.stdout %}
+            <pre class="code" style="max-height:100px;overflow-y:auto;font-size:.7rem">{{ git_status.stdout }}</pre>
+            {% elif is_git %}
+            <p class="muted">✓ Répertoire propre</p>
+            {% else %}
+            <p class="muted">—</p>
+            {% endif %}
+        </div>
+
+        <!-- Remotes configurés -->
+        <div class="card">
+            <div class="card-title" style="justify-content:space-between">
+                <span>⇄ Remotes ({{ remotes|length }})</span>
+                <a href="{% url 'git_manager:remotes' %}" class="btn btn-s" style="padding:3px 8px;font-size:.7rem">＋ Gérer</a>
+            </div>
+            {% if remotes %}
+            <table class="table">
+                <thead><tr><th>Nom</th><th>URL</th><th>Branche</th><th>Clé</th><th></th></tr></thead>
+                <tbody>
+                {% for remote in remotes %}
+                <tr>
+                    <td><strong>{{ remote.name }}</strong></td>
+                    <td class="hash" style="font-size:.68rem">{{ remote.url|truncatechars:35 }}</td>
+                    <td><span style="color:var(--accent)">{{ remote.branch }}</span></td>
+                    <td>{% if remote.ssh_key %}<span class="badge bs" style="font-size:.62rem">🔑 {{ remote.ssh_key.name }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td>
+                        <div style="display:flex;gap:4px">
+                            <button onclick="testRemote({{ remote.pk }},'{{ remote.name }}')" class="btn btn-s" id="tb-{{ remote.pk }}" style="padding:2px 7px;font-size:.7rem">⚡</button>
+                            <a href="{% url 'git_manager:edit_remote' remote.pk %}" class="btn btn-w" style="padding:2px 7px;font-size:.7rem">✏</a>
+                        </div>
+                        <div id="tr-{{ remote.pk }}" style="display:none;margin-top:4px">
+                            <pre class="code" id="to-{{ remote.pk }}" style="font-size:.65rem;max-height:40px;overflow-y:auto"></pre>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="muted">Aucun remote. <a href="{% url 'git_manager:remotes' %}" style="color:var(--accent2)">En ajouter →</a></p>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+
+<!-- Logs d'actions pour ce dépôt -->
+<div class="card">
+    <div class="card-title" style="justify-content:space-between">
+        <span>≡ Historique des actions ({{ push_logs|length }})</span>
+        <div style="display:flex;align-items:center;gap:7px">
+            <button type="button" onclick="toggleAllPushLogDetails(true)" class="btn btn-s" style="padding:3px 8px;font-size:.7rem">Tout déplier</button>
+            <a href="{% url 'git_manager:logs' %}?repo={{ repo.pk }}" class="btn btn-s" style="padding:3px 8px;font-size:.7rem">Tout voir</a>
+        </div>
+    </div>
+    {% if push_logs %}
+    <table class="table">
+        <thead><tr><th>Action</th><th>Status</th><th>Remote</th><th>Branche</th><th>Commit</th><th>Message</th><th>Déclenché</th><th>Date</th></tr></thead>
+        <tbody>
+        {% for log in push_logs %}
+        <tr>
+            <td><span class="badge bw">{{ log.get_action_display }}</span></td>
+            <td>
+                <span class="badge {% if log.status == 'success' %}bs{% elif log.status == 'error' %}be{% else %}bw{% endif %}">{{ log.get_status_display }}</span>
+                {% if log.error_output %}
+                <details class="log-output">
+                    <summary>Voir le log complet</summary>
+                    <pre>{{ log.error_output }}</pre>
+                </details>
+                {% endif %}
+            </td>
+            <td><strong>{{ log.remote_name }}</strong></td>
+            <td><span style="color:var(--accent)">{{ log.branch }}</span></td>
+            <td><span class="hash">{{ log.commit_hash|truncatechars:8|default:"—" }}</span></td>
+            <td class="muted" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ log.commit_message|default:"—" }}</td>
+            <td><span class="badge bw" style="font-size:.62rem">{{ log.triggered_by }}</span></td>
+            <td class="muted">{{ log.created_at|date:"d/m H:i" }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Aucun push effectué pour ce dépôt.</p>
+    {% endif %}
+</div>
+
+<!-- Config SSH locale — auto-remplie -->
+<div class="card">
+    <div class="card-title" style="justify-content:space-between">
+        <span>💻 Config SSH locale — Pousser depuis votre machine</span>
+        <div style="display:flex;gap:7px;align-items:center">
+            <span class="muted" style="font-size:.72rem">Serveur détecté : <strong style="color:var(--accent2)">{{ server_ip }}:{{ ssh_port }}</strong></span>
+        </div>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center;font-size:.8rem;margin-bottom:16px;flex-wrap:wrap">
+        <span style="color:var(--text)">💻 Votre machine</span>
+        <span class="muted">── git push relay ──▶</span>
+        <span style="color:var(--accent2)">🐳 {{ server_ip }}:{{ ssh_port }}</span>
+        <span class="muted">── git push ──▶</span>
+        <span style="color:var(--accent)">🐙 GitHub/GitLab</span>
+    </div>
+
+    <!-- Étapes en accordion -->
+    <div id="ssh-steps">
+
+        <div class="ssh-step" onclick="toggleStep(1)">
+            <div class="ssh-step-header">
+                <span>① Générer une clé SSH sur votre machine locale</span>
+                <span id="arrow-1">▶</span>
+            </div>
+            <div class="ssh-step-body" id="step-1" style="display:none">
+                <pre class="code">ssh-keygen -t ed25519 -C "relay-{{ repo.name }}" \
+  -f ~/.ssh/relay_{{ repo.name|lower }} -N ""
+
+# Afficher la clé publique à copier
+cat ~/.ssh/relay_{{ repo.name|lower }}.pub</pre>
+            </div>
+        </div>
+
+        <div class="ssh-step" onclick="toggleStep(2)">
+            <div class="ssh-step-header">
+                <span>② Autoriser votre clé locale sur ce relai</span>
+                <span id="arrow-2">▶</span>
+            </div>
+            <div class="ssh-step-body" id="step-2" style="display:none">
+                <p class="muted" style="margin-bottom:8px;font-size:.8rem">Collez ici votre clé publique locale (<code style="color:var(--accent2)">~/.ssh/relay_{{ repo.name|lower }}.pub</code>) pour générer la commande :</p>
+                <textarea id="local-pubkey-input" class="fi" rows="3" placeholder="ssh-ed25519 AAAA... relay-{{ repo.name }}"
+                    style="font-size:.7rem;resize:vertical;margin-bottom:8px"
+                    oninput="updateAuthorizeCmd(this.value)"></textarea>
+                <pre class="code" id="authorize-cmd" style="color:var(--accent)">docker exec -it git_manager bash -c \
+  "echo 'VOTRE_CLE_PUB' >> /root/.ssh/authorized_keys && \
+  chmod 600 /root/.ssh/authorized_keys"</pre>
+                <button onclick="copyCmd('authorize-cmd')" class="btn btn-s" style="margin-top:7px;padding:4px 10px;font-size:.72rem">📋 Copier</button>
+            </div>
+        </div>
+
+        <div class="ssh-step" onclick="toggleStep(3)">
+            <div class="ssh-step-header">
+                <span>③ Configurer ~/.ssh/config sur votre machine</span>
+                <span id="arrow-3">▶</span>
+            </div>
+            <div class="ssh-step-body" id="step-3" style="display:none">
+                <pre class="code" id="ssh-config-cmd">Host relay-{{ repo.name|lower }}
+  HostName {{ server_ip }}
+  Port {{ ssh_port }}
+  User root
+  IdentityFile ~/.ssh/relay_{{ repo.name|lower }}
+  IdentitiesOnly yes
+  StrictHostKeyChecking no</pre>
+                <button onclick="copyCmd('ssh-config-cmd')" class="btn btn-s" style="margin-top:7px;padding:4px 10px;font-size:.72rem">📋 Copier</button>
+            </div>
+        </div>
+
+        <div class="ssh-step" onclick="toggleStep(4)">
+            <div class="ssh-step-header">
+                <span>④ Ajouter le relai comme remote Git</span>
+                <span id="arrow-4">▶</span>
+            </div>
+            <div class="ssh-step-body" id="step-4" style="display:none">
+                <p class="muted" style="margin-bottom:8px;font-size:.8rem">Dans votre dépôt local :</p>
+                <pre class="code" id="add-remote-cmd">git remote add relay ssh://root@{{ server_ip }}:{{ ssh_port }}{{ repo.path }}</pre>
+                <button onclick="copyCmd('add-remote-cmd')" class="btn btn-s" style="margin-top:7px;padding:4px 10px;font-size:.72rem">📋 Copier</button>
+            </div>
+        </div>
+
+        <div class="ssh-step" onclick="toggleStep(5)">
+            <div class="ssh-step-header">
+                <span>⑤ Pousser vers le relai</span>
+                <span id="arrow-5">▶</span>
+            </div>
+            <div class="ssh-step-body" id="step-5" style="display:none">
+                {% if remotes %}
+                {% for remote in remotes %}
+                <p class="muted" style="margin-bottom:5px;font-size:.78rem">→ Push vers <strong>{{ remote.name }}/{{ remote.branch }}</strong> :</p>
+                <pre class="code" style="margin-bottom:10px">git push relay {{ remote.branch }}</pre>
+                {% endfor %}
+                {% else %}
+                <pre class="code">git push relay main</pre>
+                {% endif %}
+                <p class="muted" style="margin-top:8px;font-size:.75rem">
+                    💡 Le relai repoussera automatiquement vers GitHub si un hook pre-push est configuré.
+                </p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Bouton tout copier en une fois -->
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+        <button onclick="copyAllSteps()" class="btn btn-p">📋 Copier toutes les commandes</button>
+        <div id="all-cmds-result" style="display:none;margin-top:10px">
+            <pre class="code" id="all-cmds" style="font-size:.7rem;color:var(--accent)"></pre>
+        </div>
+    </div>
+</div>
+
+<style>
+.ssh-step { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
+.ssh-step-header { padding: 11px 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: .82rem; font-weight: 600; background: var(--surface2); transition: background .15s; }
+.ssh-step-header:hover { background: var(--border); }
+.ssh-step-body { padding: 14px 15px; background: var(--surface); }
+</style>
+
+<script>
+function toggleStep(n) {
+    const body = document.getElementById('step-' + n);
+    const arrow = document.getElementById('arrow-' + n);
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    arrow.textContent = open ? '▶' : '▼';
+}
+
+function copyCmd(id) {
+    const txt = document.getElementById(id).textContent;
+    navigator.clipboard.writeText(txt).then(() => {
+        event.target.textContent = '✅ Copié!';
+        setTimeout(() => event.target.textContent = '📋 Copier', 2000);
+    });
+}
+
+function updateAuthorizeCmd(pubkey) {
+    const safe = pubkey.trim() || 'VOTRE_CLE_PUB';
+    document.getElementById('authorize-cmd').textContent =
+        `docker exec -it git_manager bash -c \\\n  "echo '${safe}' >> /root/.ssh/authorized_keys && \\\n  chmod 600 /root/.ssh/authorized_keys"`;
+}
+
+function copyAllSteps() {
+    const allCmds = [
+        '# ① Générer la clé locale',
+        `ssh-keygen -t ed25519 -C "relay-{{ repo.name }}" -f ~/.ssh/relay_{{ repo.name|lower }} -N ""`,
+        '',
+        '# ③ ~/.ssh/config',
+        document.getElementById('ssh-config-cmd').textContent,
+        '',
+        '# ④ Ajouter remote',
+        document.getElementById('add-remote-cmd').textContent,
+        '',
+        '# ⑤ Pousser',
+        'git push relay main',
+    ].join('\n');
+    document.getElementById('all-cmds').textContent = allCmds;
+    document.getElementById('all-cmds-result').style.display = 'block';
+    navigator.clipboard.writeText(allCmds);
+}
+
+function testRemote(pk, name) {
+    const btn = document.getElementById('tb-' + pk);
+    btn.textContent = '⏳'; btn.disabled = true;
+    fetch(`/remotes/${pk}/test/`).then(r => r.json()).then(d => {
+        const tr = document.getElementById('tr-' + pk);
+        const to = document.getElementById('to-' + pk);
+        tr.style.display = 'block';
+        to.style.color = d.success ? 'var(--accent)' : 'var(--danger)';
+        to.textContent = (d.success ? '✅ ' : '❌ ') + d.output;
+        btn.textContent = '⚡'; btn.disabled = false;
+    }).catch(e => {
+        document.getElementById('tr-' + pk).style.display = 'block';
+        document.getElementById('to-' + pk).textContent = '❌ ' + e;
+        btn.textContent = '⚡'; btn.disabled = false;
+    });
+}
+
+function fetchRemote(pk, name) {
+    const btn = document.getElementById('fb-' + pk);
+    if (!btn) return;
+    btn.textContent = '⏳'; btn.disabled = true;
+    fetch(`/remotes/${pk}/fetch/`)
+        .then(r => r.json())
+        .then(d => {
+            const msg = d.success
+                ? `✅ Fetch ${name} réussi`
+                : `❌ Fetch ${name} échoué: ${d.error}`;
+            alert(msg);
+            btn.textContent = '⬇ Fetch ' + name; btn.disabled = false;
+        })
+        .catch(e => {
+            alert('❌ Erreur: ' + e.message);
+            btn.textContent = '⬇ Fetch ' + name; btn.disabled = false;
+        });
+}
+
+function pullRemote(pk, name) {
+    const btn = document.getElementById('pb-' + pk);
+    if (!btn) return;
+    btn.textContent = '⏳'; btn.disabled = true;
+    fetch(`/remotes/${pk}/pull/`)
+        .then(r => r.json())
+        .then(d => {
+            const msg = d.success
+                ? `✅ Pull ${name} réussi`
+                : `❌ Pull ${name} échoué: ${d.error}`;
+            alert(msg);
+            btn.textContent = '⬇ Pull ' + name; btn.disabled = false;
+            if (d.success) location.reload();
+        })
+        .catch(e => {
+            alert('❌ Erreur: ' + e.message);
+            btn.textContent = '⬇ Pull ' + name; btn.disabled = false;
+        });
+}
+
+// Ouvrir la première étape par défaut
+toggleStep(1);
+</script>
+{% endblock %}

@@ -1,0 +1,42 @@
+{% extends "git_manager/base.html" %}
+{% block title %}Logs actions{% endblock %}
+{% block page_title %}Historique des Actions{% endblock %}
+{% block content %}
+<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
+    <button type="button" onclick="toggleAllPushLogDetails(true)" class="btn btn-s" style="padding:3px 8px;font-size:.75rem">Tout déplier</button>
+    <a href="{% url 'git_manager:logs' %}" class="btn {% if not status_filter %}btn-p{% else %}btn-s{% endif %}">Tous</a>
+    <a href="?status=success" class="btn {% if status_filter == 'success' %}btn-p{% else %}btn-s{% endif %}">✅ Succès</a>
+    <a href="?status=error" class="btn {% if status_filter == 'error' %}btn-p{% else %}btn-s{% endif %}">❌ Erreurs</a>
+    <a href="?status=pending" class="btn {% if status_filter == 'pending' %}btn-p{% else %}btn-s{% endif %}">⏳ En cours</a>
+</div>
+<div class="card">
+    <div class="card-title">≡ Logs ({{ logs|length }})</div>
+    {% if logs %}
+    <table class="table">
+        <thead><tr><th>Action</th><th>Status</th><th>Dépôt</th><th>Remote</th><th>Branche</th><th>Commit</th><th>Message</th><th>Date</th></tr></thead>
+        <tbody>
+        {% for log in logs %}
+        <tr>
+            <td><span class="badge bw">{{ log.get_action_display }}</span></td>
+            <td>
+                <span class="badge {% if log.status == 'success' %}bs{% elif log.status == 'error' %}be{% else %}bw{% endif %}">{{ log.get_status_display }}</span>
+                {% if log.error_output %}
+                <details class="log-output">
+                    <summary>Voir le log complet</summary>
+                    <pre>{{ log.error_output }}</pre>
+                </details>
+                {% endif %}
+            </td>
+            <td>{{ log.repo_name|default:"—" }}</td>
+            <td><strong>{{ log.remote_name }}</strong></td>
+            <td><span style="color:var(--accent)">{{ log.branch }}</span></td>
+            <td><span class="hash">{{ log.commit_hash|truncatechars:8|default:"—" }}</span></td>
+            <td class="muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ log.commit_message|default:"—" }}</td>
+            <td class="muted">{{ log.created_at|date:"d/m H:i" }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}<p class="muted">Aucun log{% if status_filter %} avec ce filtre{% endif %}.</p>{% endif %}
+</div>
+{% endblock %}

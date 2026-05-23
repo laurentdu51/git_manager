@@ -1,0 +1,227 @@
+{% extends "git_manager/base.html" %}
+{% block title %}Config SSH Local{% endblock %}
+{% block page_title %}Configuration SSH — Client local{% endblock %}
+{% block content %}
+
+<div class="card">
+    <div class="card-title" style="justify-content:space-between">
+        <span>💻 Connexion locale → Relai → GitHub</span>
+        <span class="muted" style="font-size:.75rem">Serveur : <strong style="color:var(--accent2)">{{ server_ip }}:{{ ssh_port }}</strong></span>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:10px;align-items:center;font-size:.82rem;flex-wrap:wrap">
+        <span style="color:var(--text)">💻 Votre machine</span>
+        <span class="muted">── git push relay ──▶</span>
+        <span style="color:var(--accent2)">🐳 {{ server_ip }}:{{ ssh_port }}</span>
+        <span class="muted">── git push ──▶</span>
+        <span style="color:var(--accent)">🐙 GitHub/GitLab</span>
+    </div>
+</div>
+
+{% if not ssh_enabled %}
+<div class="card" style="border-color:rgba(251,146,60,.3)">
+    <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:1.3rem">⚠️</span>
+        <div>
+            <strong>Serveur SSH désactivé</strong>
+            <p class="muted" style="font-size:.78rem;margin-top:3px">
+                Activez-le dans <code style="color:var(--accent2)">.env</code> :
+                <code style="color:var(--accent)">ENABLE_SSH_SERVER=true</code> puis redémarrez le conteneur.
+            </p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Stats card: clé publique + test -->
+<div class="g2">
+    <div class="card">
+        <div class="card-title">🔑 Clé publique du relai</div>
+        {% if public_key %}
+        <pre class="code" id="relay-pubkey" style="font-size:.68rem;word-break:break-all;white-space:pre-wrap">{{ public_key }}</pre>
+        <button onclick="copyEl('relay-pubkey')" class="btn btn-s" style="margin-top:7px;padding:3px 9px;font-size:.72rem">📋 Copier la clé</button>
+        <p class="muted" style="margin-top:6px;font-size:.72rem">
+            Ajoutez cette clé sur GitHub → Settings → SSH and GPG keys
+        </p>
+        {% else %}
+        <p class="muted">Aucune clé générée.</p>
+        <a href="{% url 'git_manager:ssh' %}" class="btn btn-p" style="margin-top:6px">🔑 Générer une clé</a>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <div class="card-title">🔌 Test de connexion</div>
+        <div class="fg">
+            <label class="fl">Hôte</label>
+            <input type="text" id="test-host" class="fi" value="{{ server_ip }}" style="font-size:.75rem">
+        </div>
+        <button onclick="testSshConnection()" class="btn btn-p" id="test-btn">
+            ▶ Tester la connexion SSH
+        </button>
+        <div id="test-result" style="margin-top:8px"></div>
+    </div>
+</div>
+
+<!-- Étapes -->
+<div class="g2">
+    <div class="card">
+        <div class="card-title">① Générer une clé SSH locale</div>
+        <p class="muted" style="font-size:.75rem;margin-bottom:6px">Sur votre machine, pas sur le relai :</p>
+        <pre class="code">ssh-keygen -t ed25519 -C "relay-local" \
+  -f ~/.ssh/git_relay -N ""
+
+cat ~/.ssh/git_relay.pub</pre>
+    </div>
+
+    <div class="card">
+        <div class="card-title">② Autoriser la clé sur le relai</div>
+        <p class="muted" style="margin-bottom:6px;font-size:.8rem">Collez votre clé publique :</p>
+        <textarea id="global-pubkey" class="fi" rows="2"
+            placeholder="ssh-ed25519 AAAA..."
+            style="font-size:.7rem;resize:vertical;margin-bottom:6px"
+            oninput="updateAuthorizeCmd(this.value)"></textarea>
+        <pre class="code" id="authorize-cmd" style="font-size:.7rem;white-space:pre-wrap">{{ ssh_command }} \
+  "echo 'VOTRE_CLE_PUB' >> ~/.ssh/authorized_keys"</pre>
+        <button onclick="copyEl('authorize-cmd')" class="btn btn-s" style="margin-top:7px;padding:3px 9px;font-size:.72rem">📋 Copier la commande</button>
+    </div>
+
+    <div class="card">
+        <div class="card-title">③ Config ~/.ssh/config locale</div>
+        <pre class="code" id="local-ssh-config">Host git-relay
+  HostName {{ server_ip }}
+  Port {{ ssh_port }}
+  User root
+  IdentityFile ~/.ssh/git_relay
+  IdentitiesOnly yes
+  StrictHostKeyChecking no</pre>
+        <button onclick="copyEl('local-ssh-config')" class="btn btn-s" style="margin-top:7px;padding:3px 9px;font-size:.72rem">📋 Copier</button>
+    </div>
+
+    <div class="card">
+        <div class="card-title">④ Connexion rapide (one-liner)</div>
+        <pre class="code" id="quick-ssh" style="font-size:.72rem">{{ ssh_command }}</pre>
+        <button onclick="copyEl('quick-ssh')" class="btn btn-s" style="margin-top:7px;padding:3px 9px;font-size:.72rem">📋 Copier</button>
+        <p class="muted" style="margin-top:6px;font-size:.72rem">
+            Testez la connexion : <code style="color:var(--accent2)">ssh -p {{ ssh_port }} root@{{ server_ip }} "hostname"</code>
+        </p>
+    </div>
+</div>
+
+<!-- Commandes par dépôt -->
+<div class="card">
+    <div class="card-title">⑤ Commandes par dépôt</div>
+    {% if repos %}
+    <div style="display:flex;flex-direction:column;gap:12px">
+        {% for repo in repos %}
+        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <div style="background:var(--surface2);padding:10px 14px;display:flex;justify-content:space-between;align-items:center">
+                <span style="font-weight:600;font-size:.85rem">◻ {{ repo.name }}</span>
+                <a href="{% url 'git_manager:repo_detail' repo.pk %}" class="btn btn-s" style="padding:3px 8px;font-size:.7rem">🔍 Fiche →</a>
+            </div>
+            <div style="padding:12px 14px">
+                <p class="muted" style="font-size:.74rem;margin-bottom:5px">{{ repo.path }}</p>
+                <div class="fg" style="margin-bottom:6px">
+                    <label class="fl" style="font-size:.65rem">Branche</label>
+                    <input type="text" class="fi" style="font-size:.72rem;width:140px;padding:4px 8px"
+                        value="main" id="branch-{{ repo.pk }}"
+                        oninput="updateRepoCmd({{ repo.pk }}, this.value)">
+                </div>
+                <pre class="code" id="repo-cmd-{{ repo.pk }}" style="font-size:.72rem">cd /votre/projet/local
+git remote add relay ssh://root@{{ server_ip }}:{{ ssh_port }}{{ repo.path }}
+git push relay main</pre>
+                <button onclick="copyEl('repo-cmd-{{ repo.pk }}')" class="btn btn-s" style="margin-top:6px;padding:3px 9px;font-size:.72rem">📋 Copier</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Aucun dépôt. <a href="{% url 'git_manager:repos' %}" style="color:var(--accent2)">Ajouter →</a></p>
+    {% endif %}
+</div>
+
+<!-- Clés SSH du relai + rsync -->
+<div class="g2">
+    <div class="card">
+        <div class="card-title">🔑 Clés SSH sur ce relai</div>
+        {% if ssh_keys %}
+        <table class="table">
+            <thead><tr><th>Nom</th><th>Empreinte</th></tr></thead>
+            <tbody>
+            {% for key in ssh_keys %}
+            <tr>
+                <td><strong>{{ key.name }}</strong></td>
+                <td><span class="hash" style="font-size:.68rem">{{ key.fingerprint|default:"—" }}</span></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="muted">Aucune clé.</p>
+        {% endif %}
+        <a href="{% url 'git_manager:ssh' %}" class="btn btn-s" style="margin-top:6px;padding:3px 8px;font-size:.7rem">🔑 Gérer les clés</a>
+    </div>
+
+    <div class="card">
+        <div class="card-title">📦 rsync / scp (fichiers)</div>
+        <p class="muted" style="font-size:.73rem;margin-bottom:6px">Copier des fichiers via le relai :</p>
+        <pre class="code" id="rsync-cmd" style="font-size:.68rem">rsync -avz -e "ssh -p {{ ssh_port }}" \
+  ./mon-dossier/ \
+  root@{{ server_ip }}:/repos/mon-projet/</pre>
+        <button onclick="copyEl('rsync-cmd')" class="btn btn-s" style="margin-top:6px;padding:3px 9px;font-size:.72rem">📋 Copier</button>
+    </div>
+</div>
+
+<script>
+function copyEl(id) {
+    const text = document.getElementById(id).textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = event.target;
+        const orig = btn.textContent;
+        btn.textContent = '✅ Copié!';
+        setTimeout(() => btn.textContent = orig, 2000);
+    });
+}
+
+function updateAuthorizeCmd(pubkey) {
+    const safe = pubkey.trim() || 'VOTRE_CLE_PUB';
+    document.getElementById('authorize-cmd').textContent =
+        `{{ ssh_command }} \\\n  "echo '${safe}' >> ~/.ssh/authorized_keys"`;
+}
+
+function updateRepoCmd(pk, branch) {
+    const b = branch || 'main';
+    const el = document.getElementById('repo-cmd-' + pk);
+    const path = el.textContent.match(/ssh:\/\/.*?(?:\n|$)/m);
+    if (path) {
+        const relayUrl = path[0].trim();
+        el.textContent =
+            `cd /votre/projet/local\ngit remote add relay ${relayUrl}\ngit push relay ${b}`;
+    }
+}
+
+function testSshConnection() {
+    const host = document.getElementById('test-host').value.trim() || '{{ server_ip }}';
+    const btn = document.getElementById('test-btn');
+    const result = document.getElementById('test-result');
+    btn.disabled = true;
+    btn.textContent = '⏳ Test en cours...';
+    result.innerHTML = '';
+
+    fetch('/ssh/test/?host=' + encodeURIComponent(host) + '&name=id_ed25519')
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                result.innerHTML = '<div class="msg msg-success">✅ Connexion réussie !</div>';
+            } else {
+                result.innerHTML = '<div class="msg msg-error">❌ Échec : ' + (data.error || data.stderr || 'timeout') + '</div>';
+            }
+        })
+        .catch(err => {
+            result.innerHTML = '<div class="msg msg-error">❌ Erreur réseau</div>';
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = '▶ Tester la connexion SSH';
+        });
+}
+</script>
+{% endblock %}
