@@ -102,6 +102,7 @@ class GitService:
             return {'success': False, 'stdout': '', 'stderr': 'Unable to determine current branch'}
 
         target_branch = branch or current_branch
+        self._run(['git', 'config', 'pull.rebase', 'false'])
         cmd = ['git', 'pull', remote, target_branch]
         logger.info(f"Pull {remote}/{target_branch}")
         result = self._run(cmd)
@@ -250,6 +251,8 @@ def init_repo(path: str, default_branch: str = 'main') -> dict:
 
     # Permet les pushes vers la branche courante (utile pour le relai SSH)
     _git_config(repo_path, 'receive.denyCurrentBranch', 'updateInstead')
+    # Stratégie pull : merge plutôt que rebase (évite l'erreur "divergent branches")
+    _git_config(repo_path, 'pull.rebase', 'false')
     # Identité du gestionnaire
     _git_config(repo_path, 'user.email', 'deploy@local.test')
     _git_config(repo_path, 'user.name', 'Git Manager')
