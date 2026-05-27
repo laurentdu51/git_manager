@@ -56,6 +56,12 @@ class TestReposViews(TestCase):
         response = self.client.get(reverse('git_manager:repo_detail', args=[999]))
         self.assertEqual(response.status_code, 404)
 
+    def test_repos_view_has_ssh_keys(self):
+        SshKey.objects.create(name='test-key', key_path='/root/.ssh/id_ed25519',
+                              public_key='pubkey')
+        response = self.client.get(reverse('git_manager:repos'))
+        self.assertContains(response, 'test-key')
+
     @patch('git_manager.views.GitService')
     def test_add_repo_success(self, mock_git):
         import tempfile
@@ -142,6 +148,71 @@ class TestCreateRepoView(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(GitRepo.objects.filter(name='cleanup-test').exists())
         mock_init.assert_called_once_with(repo_path)
+
+
+class TestCloneRepoView(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse('git_manager:clone_repo')
+
+    @patch('git_manager.services.clone_repo')
+    def test_clone_repo_success(self, mock_clone):
+        mock_clone.return_value = {'success': True, 'path': '/tmp/cloned-repo'}
+        response = self.client.post(self.url, {
+            'remote_url': 'git@github.com:user/projet.git',
+            'name': 'cloned-projet',
+        })
+        self.assertEqual(response.status_code, 302)
+        repo = GitRepo.objects.filter(name='cloned-projet').first()
+        self.assertIsNotNone(repo)
+        self.assertEqual(repo.path, '/tmp/cloned-repo')
+        self.assertTrue(repo.remotes.filter(name='origin').exists())
+
+    @patch('git_manager.services.clone_repo')
+    def test_clone_repo_with_ssh_key(self, mock_clone):
+        key = SshKey.objects.create(name='gh-key', key_path='/root/.ssh/id_ed25519',
+                                     public_key='pub')
+        mock_clone.return_value = {'success': True, 'path': '/tmp/cloned-key'}
+        response = self.client.post(self.url, {
+            'remote_url': 'git@github.com:user/projet.git',
+            'name': 'cloned-key',
+            'ssh_key_id': str(key.pk),
+        })
+        self.assertEqual(response.status_code, 302)
+        repo = GitRepo.objects.get(name='cloned-key')
+        remote = repo.remotes.first()
+        self.assertIsNotNone(remote)
+        self.assertEqual(remote.ssh_key.pk, key.pk)
+
+    @patch('git_manager.services.clone_repo')
+    def test_clone_repo_failure(self, mock_clone):
+        mock_clone.return_value = {'success': False, 'error': 'Repository not found'}
+        response = self.client.post(self.url, {
+            'remote_url': 'git@github.com:user/inexistant.git',
+            'name': 'fail',
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(GitRepo.objects.filter(name='fail').exists())
+
+    def test_clone_repo_invalid_form(self):
+        response = self.client.post(self.url, {
+            'remote_url': 'not-a-url',
+            'name': 'a',
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(GitRepo.objects.filter(name='a').exists())
+
+    @patch('git_manager.services.clone_repo')
+    @patch('git_manager.views.GitRepo.objects.create')
+    def test_clone_repo_db_error_cleans_up(self, mock_create, mock_clone):
+        mock_clone.return_value = {'success': True, 'path': '/tmp/cleanup-clone'}
+        mock_create.side_effect = Exception('DB error')
+        response = self.client.post(self.url, {
+            'remote_url': 'git@github.com:user/cleanup.git',
+            'name': 'cleanup-clone',
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(GitRepo.objects.filter(name='cleanup-clone').exists())
 
 
 class TestRemotesViews(TestCase):

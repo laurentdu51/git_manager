@@ -234,6 +234,45 @@ class GitService:
         return branches
 
 
+def clone_repo(url: str, target_path: str, ssh_key_path: str = None,
+               remote_name: str = 'origin') -> dict:
+    """Clone un dépôt distant en local.
+
+    Crée le dossier parent si nécessaire, exécute ``git clone``,
+    puis applique la configuration standard du gestionnaire.
+    """
+    repo_path = Path(target_path).expanduser().resolve()
+    parent = repo_path.parent
+    try:
+        parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return {'success': False, 'error': f"Impossible de créer le dossier parent : {e}"}
+
+    env = os.environ.copy()
+    if ssh_key_path:
+        key = str(Path(ssh_key_path).expanduser())
+        env['GIT_SSH_COMMAND'] = f'ssh -i {key} -o IdentitiesOnly=yes'
+
+    cmd = ['git', 'clone', '--origin', remote_name, url, str(repo_path)]
+    logger.info(f"Clone {url} → {repo_path}")
+    try:
+        subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=True, env=env)
+    except subprocess.CalledProcessError as e:
+        return {'success': False, 'error': e.stderr.strip() or str(e)}
+    except subprocess.TimeoutExpired:
+        return {'success': False, 'error': 'Timeout (120s)'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+    _git_config(repo_path, 'receive.denyCurrentBranch', 'updateInstead')
+    _git_config(repo_path, 'pull.rebase', 'false')
+    _git_config(repo_path, 'user.email', 'deploy@local.test')
+    _git_config(repo_path, 'user.name', 'Git Manager')
+
+    logger.info(f"Clone terminé : {url} → {repo_path}")
+    return {'success': True, 'path': str(repo_path)}
+
+
 def init_repo(path: str, default_branch: str = 'main') -> dict:
     """Crée un nouveau dépôt Git vide à l'emplacement donné.
 

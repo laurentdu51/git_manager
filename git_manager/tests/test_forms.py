@@ -10,6 +10,7 @@ from git_manager.forms import (
     GitRepoForm,
     GitRemoteForm,
     CreateRepoForm,
+    CloneRepoForm,
 )
 from django.core.exceptions import ValidationError
 
@@ -104,6 +105,40 @@ class TestGitRemoteForm(TestCase):
         })
         self.assertFalse(form.is_valid())
         self.assertIn('url', form.errors)
+
+
+class TestCloneRepoForm(TestCase):
+    def test_valid_form(self):
+        form = CloneRepoForm({
+            'remote_url': 'git@github.com:user/projet.git',
+            'name': 'mon-projet',
+            'description': 'Mon projet cloné',
+        })
+        self.assertTrue(form.is_valid())
+
+    def test_invalid_url(self):
+        form = CloneRepoForm({
+            'remote_url': 'not-a-url',
+            'name': 'mon-projet',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('remote_url', form.errors)
+
+    def test_invalid_name(self):
+        form = CloneRepoForm({
+            'remote_url': 'git@github.com:user/projet.git',
+            'name': 'a',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('name', form.errors)
+
+    def test_empty_url(self):
+        form = CloneRepoForm({
+            'remote_url': '',
+            'name': 'mon-projet',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('remote_url', form.errors)
 
 
 class TestCreateRepoForm(TestCase):

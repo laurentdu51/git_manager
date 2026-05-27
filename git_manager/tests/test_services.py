@@ -157,3 +157,71 @@ class TestInitRepo(TestCase):
         svc = GitService(existing)
         self.assertTrue(svc.is_git_repo())
 
+
+class TestCloneRepo(TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.source_path = os.path.join(self.temp_dir, 'source')
+        self.target_path = os.path.join(self.temp_dir, 'clone')
+        os.makedirs(self.source_path)
+        os.chdir(self.source_path)
+        os.system('git init -q')
+        os.system('git config user.email "test@test.com"')
+        os.system('git config user.name "Test"')
+        with open('file.txt', 'w') as f:
+            f.write('hello')
+        os.system('git add .')
+        os.system('git commit -q -m "Initial"')
+
+    def tearDown(self):
+        os.chdir('/')
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_clone_local_repo(self):
+        from git_manager.services import clone_repo
+        result = clone_repo(self.source_path, self.target_path)
+        self.assertTrue(result['success'])
+        self.assertTrue(os.path.isdir(self.target_path))
+        self.assertTrue(os.path.isdir(os.path.join(self.target_path, '.git')))
+        svc = GitService(self.target_path)
+        self.assertTrue(svc.is_git_repo())
+        self.assertTrue(os.path.isfile(os.path.join(self.target_path, 'file.txt')))
+
+    def test_clone_sets_receive_deny_current_branch(self):
+        from git_manager.services import clone_repo
+        clone_repo(self.source_path, self.target_path)
+        svc = GitService(self.target_path)
+        result = svc._run(['git', 'config', 'receive.denyCurrentBranch'])
+        self.assertEqual(result['stdout'], 'updateInstead')
+
+    def test_clone_sets_pull_rebase(self):
+        from git_manager.services import clone_repo
+        clone_repo(self.source_path, self.target_path)
+        svc = GitService(self.target_path)
+        result = svc._run(['git', 'config', 'pull.rebase'])
+        self.assertEqual(result['stdout'], 'false')
+
+    def test_clone_sets_git_identity(self):
+        from git_manager.services import clone_repo
+        clone_repo(self.source_path, self.target_path)
+        svc = GitService(self.target_path)
+        email = svc._run(['git', 'config', 'user.email'])['stdout']
+        name = svc._run(['git', 'config', 'user.name'])['stdout']
+        self.assertEqual(email, 'deploy@local.test')
+        self.assertEqual(name, 'Git Manager')
+
+    def test_clone_remote_name_custom(self):
+        from git_manager.services import clone_repo
+        result = clone_repo(self.source_path, self.target_path, remote_name='upstream')
+        self.assertTrue(result['success'])
+        svc = GitService(self.target_path)
+        remotes = svc.get_remotes()
+        self.assertEqual(remotes[0]['name'], 'upstream')
+
+    def test_clone_invalid_url(self):
+        from git_manager.services import clone_repo
+        result = clone_repo('https://invalid.url/repo.git',
+                            os.path.join(self.temp_dir, 'fail'))
+        self.assertFalse(result['success'])
+        self.assertIn('error', result)
+

@@ -76,6 +76,25 @@ class CreateRepoForm(forms.Form):
         return str(resolved)
 
 
+class CloneRepoForm(forms.Form):
+    remote_url = forms.CharField(
+        max_length=500, validators=[validate_git_url],
+        label='URL du dépôt distant',
+        help_text='git@github.com:user/projet.git ou https://github.com/user/projet.git',
+    )
+    name = forms.CharField(max_length=100, validators=[validate_repo_name])
+    ssh_key_id = forms.IntegerField(required=False, widget=forms.HiddenInput)
+    description = forms.CharField(widget=forms.Textarea, required=False)
+
+    def clean_name(self):
+        name = self.cleaned_data['name'].strip()
+        return name
+
+    def clean_remote_url(self):
+        url = self.cleaned_data['remote_url'].strip()
+        return url
+
+
 class GitRemoteForm(forms.Form):
     name = forms.CharField(max_length=100, validators=[validate_remote_name])
     url = forms.CharField(max_length=500, validators=[validate_git_url])

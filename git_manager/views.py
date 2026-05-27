@@ -57,7 +57,8 @@ def dashboard(request):
 
 def repos_view(request):
     return render(request, 'git_manager/repos.html', {
-        'repos': GitRepo.objects.prefetch_related('remotes').all()
+        'repos': GitRepo.objects.prefetch_related('remotes').all(),
+        'ssh_keys': SshKey.objects.all(),
     })
 
 
@@ -156,6 +157,59 @@ def create_repo(request):
 
     logger.info(f"Repo created: {name} at {result['path']}")
     messages.success(request, f'✅ Nouveau dépôt "{name}" créé.')
+    return redirect('git_manager:repo_detail', pk=repo.pk)
+
+
+@require_POST
+def clone_repo(request):
+    from .forms import CloneRepoForm
+    from .services import clone_repo
+
+    remote_url = request.POST.get('remote_url', '').strip()
+    name = request.POST.get('name', '').strip()
+    description = request.POST.get('description', '').strip()
+    ssh_key_id = request.POST.get('ssh_key_id') or None
+
+    form = CloneRepoForm({
+        'remote_url': remote_url, 'name': name,
+        'ssh_key_id': ssh_key_id, 'description': description,
+    })
+    if not form.is_valid():
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(request, error)
+        return redirect('git_manager:repos')
+
+    target_path = f'/repos/{name}'
+    ssh_key = SshKey.objects.filter(pk=ssh_key_id).first() if ssh_key_id else None
+    key_path = ssh_key.key_path if ssh_key else None
+
+    result = clone_repo(remote_url, target_path, key_path)
+    if not result['success']:
+        messages.error(request, f'❌ Échec du clone : {result["error"]}')
+        return redirect('git_manager:repos')
+
+    try:
+        repo = GitRepo.objects.create(
+            name=name, path=result['path'],
+            description=description, is_active=True,
+        )
+    except Exception as e:
+        import shutil
+        try:
+            shutil.rmtree(result['path'])
+        except Exception:
+            pass
+        messages.error(request, f'❌ Erreur lors de l\'enregistrement : {e}')
+        return redirect('git_manager:repos')
+
+    GitRemote.objects.create(
+        repo=repo, name='origin', url=remote_url,
+        branch='main', is_active=True, ssh_key=ssh_key,
+    )
+
+    logger.info(f"Repo cloned: {name} from {remote_url}")
+    messages.success(request, f'✅ Dépôt "{name}" cloné avec succès depuis le remote.')
     return redirect('git_manager:repo_detail', pk=repo.pk)
 
 
