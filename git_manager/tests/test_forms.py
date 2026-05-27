@@ -9,6 +9,7 @@ from git_manager.forms import (
     validate_ssh_key_path,
     GitRepoForm,
     GitRemoteForm,
+    CreateRepoForm,
 )
 from django.core.exceptions import ValidationError
 
@@ -103,3 +104,40 @@ class TestGitRemoteForm(TestCase):
         })
         self.assertFalse(form.is_valid())
         self.assertIn('url', form.errors)
+
+
+class TestCreateRepoForm(TestCase):
+    def test_valid_form(self):
+        import tempfile
+        temp_dir = tempfile.mkdtemp()
+        new_path = os.path.join(temp_dir, 'new-repo')
+        form = CreateRepoForm({
+            'name': 'new-repo',
+            'path': new_path,
+            'description': 'Mon nouveau dépôt'
+        })
+        self.assertTrue(form.is_valid())
+
+    def test_invalid_name(self):
+        import tempfile
+        temp_dir = tempfile.mkdtemp()
+        form = CreateRepoForm({
+            'name': 'a',
+            'path': os.path.join(temp_dir, 'new-repo'),
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('name', form.errors)
+
+    def test_clean_path_existing_git_repo(self):
+        import tempfile
+        import os
+        temp_dir = tempfile.mkdtemp()
+        os.chdir(temp_dir)
+        os.system('git init -q')
+        form = CreateRepoForm({
+            'name': 'test',
+            'path': temp_dir,
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('path', form.errors)
+        self.assertIn('existe déjà', form.errors['path'][0])

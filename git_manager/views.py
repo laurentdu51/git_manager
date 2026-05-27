@@ -117,6 +117,47 @@ def add_repo(request):
     return redirect('git_manager:repo_detail', pk=repo.pk)
 
 @require_POST
+def create_repo(request):
+    from .forms import CreateRepoForm
+    from .services import init_repo
+
+    name = request.POST.get('name', '').strip()
+    path = request.POST.get('path', '').strip()
+    description = request.POST.get('description', '').strip()
+
+    form = CreateRepoForm({'name': name, 'path': path, 'description': description})
+    if not form.is_valid():
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(request, error)
+        return redirect('git_manager:repos')
+
+    # Initialiser le dépôt Git
+    result = init_repo(path)
+    if not result['success']:
+        messages.error(request, f'❌ Échec de la création : {result["error"]}')
+        return redirect('git_manager:repos')
+
+    try:
+        repo = GitRepo.objects.create(
+            name=name, path=result['path'], description=description, is_active=True
+        )
+    except Exception as e:
+        # Nettoyer le dossier créé en cas d'erreur DB
+        import shutil
+        try:
+            shutil.rmtree(result['path'])
+        except Exception:
+            pass
+        messages.error(request, f'❌ Erreur lors de l\'enregistrement : {e}')
+        return redirect('git_manager:repos')
+
+    logger.info(f"Repo created: {name} at {result['path']}")
+    messages.success(request, f'✅ Nouveau dépôt "{name}" créé.')
+    return redirect('git_manager:repo_detail', pk=repo.pk)
+
+
+@require_POST
 def delete_repo(request, pk):
     repo = get_object_or_404(GitRepo, pk=pk)
     name = repo.name

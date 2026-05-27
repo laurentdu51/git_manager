@@ -55,6 +55,27 @@ class GitRepoForm(forms.Form):
     description = forms.CharField(widget=forms.Textarea, required=False)
 
 
+class CreateRepoForm(forms.Form):
+    name = forms.CharField(max_length=100, validators=[validate_repo_name])
+    path = forms.CharField(
+        max_length=500,
+        help_text='Chemin où créer le dépôt (ex. /repos/mon-projet).',
+    )
+    description = forms.CharField(widget=forms.Textarea, required=False)
+
+    def clean_path(self):
+        path = self.cleaned_data['path'].strip()
+        resolved = Path(path).expanduser().resolve()
+        # Si le chemin existe déjà et contient déjà un .git, on prévient
+        git_dir = resolved / '.git'
+        if resolved.exists() and (git_dir.is_dir() or git_dir.is_file()):
+            raise ValidationError(
+                'Un dépôt Git existe déjà à cet emplacement. '
+                'Utilisez "Ajouter un dépôt" pour l\'importer.'
+            )
+        return str(resolved)
+
+
 class GitRemoteForm(forms.Form):
     name = forms.CharField(max_length=100, validators=[validate_remote_name])
     url = forms.CharField(max_length=500, validators=[validate_git_url])

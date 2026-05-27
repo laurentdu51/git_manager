@@ -96,3 +96,64 @@ class TestGitService(TestCase):
     def test_nonexistent_path_raises_error(self):
         with self.assertRaises(FileNotFoundError):
             GitService('/nonexistent/path')
+
+
+class TestInitRepo(TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.repo_path = os.path.join(self.temp_dir, 'new-repo')
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_init_repo_creates_directory(self):
+        from git_manager.services import init_repo
+        result = init_repo(self.repo_path)
+        self.assertTrue(result['success'])
+        self.assertTrue(os.path.isdir(self.repo_path))
+        self.assertTrue(os.path.isdir(os.path.join(self.repo_path, '.git')))
+
+    def test_init_repo_is_valid_git_repo(self):
+        from git_manager.services import init_repo
+        result = init_repo(self.repo_path)
+        self.assertTrue(result['success'])
+        svc = GitService(self.repo_path)
+        self.assertTrue(svc.is_git_repo())
+
+    def test_init_repo_has_initial_commit(self):
+        from git_manager.services import init_repo
+        init_repo(self.repo_path)
+        svc = GitService(self.repo_path)
+        commit = svc.get_last_commit()
+        self.assertEqual(commit['message'], 'Initial commit')
+
+    def test_init_repo_default_branch(self):
+        from git_manager.services import init_repo
+        init_repo(self.repo_path, default_branch='main')
+        svc = GitService(self.repo_path)
+        self.assertEqual(svc.get_current_branch(), 'main')
+
+    def test_init_repo_deny_current_branch(self):
+        from git_manager.services import init_repo
+        init_repo(self.repo_path)
+        svc = GitService(self.repo_path)
+        result = svc._run(['git', 'config', 'receive.denyCurrentBranch'])
+        self.assertTrue(result['success'])
+        self.assertEqual(result['stdout'], 'updateInstead')
+
+    def test_init_repo_custom_branch(self):
+        from git_manager.services import init_repo
+        result = init_repo(self.repo_path, default_branch='develop')
+        self.assertTrue(result['success'])
+        svc = GitService(self.repo_path)
+        self.assertEqual(svc.get_current_branch(), 'develop')
+
+    def test_init_repo_on_existing_non_git_directory(self):
+        from git_manager.services import init_repo
+        existing = os.path.join(self.temp_dir, 'existing-dir')
+        os.makedirs(existing)
+        result = init_repo(existing)
+        self.assertTrue(result['success'])
+        svc = GitService(existing)
+        self.assertTrue(svc.is_git_repo())
+

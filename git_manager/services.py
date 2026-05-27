@@ -191,3 +191,57 @@ class GitService:
         result = self.get_ahead_behind(remote, branch)
         cache.set(cache_key, result, timeout)
         return result
+
+
+def init_repo(path: str, default_branch: str = 'main') -> dict:
+    """Crée un nouveau dépôt Git vide à l'emplacement donné.
+
+    Crée le dossier si nécessaire, exécute ``git init``,
+    configure l'utilisateur et autorise les pushes sur la branche courante.
+    """
+    repo_path = Path(path).expanduser().resolve()
+    try:
+        repo_path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return {'success': False, 'error': f"Impossible de créer le dossier : {e}"}
+
+    try:
+        subprocess.run(
+            ['git', 'init', f'--initial-branch={default_branch}'],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=30, check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        return {'success': False, 'error': f"git init a échoué : {e.stderr or e}"}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+    # Permet les pushes vers la branche courante (utile pour le relai SSH)
+    _git_config(repo_path, 'receive.denyCurrentBranch', 'updateInstead')
+    # Identité du gestionnaire
+    _git_config(repo_path, 'user.email', 'deploy@local.test')
+    _git_config(repo_path, 'user.name', 'Git Manager')
+
+    # Commit initial pour établir la branche (sinon push refuse)
+    try:
+        subprocess.run(
+            ['git', 'commit', '--allow-empty', '-m', 'Initial commit'],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=30, check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        return {'success': False, 'error': f"Commit initial a échoué : {e.stderr or e}"}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+    logger.info(f"Nouveau dépôt initialisé : {repo_path}")
+    return {'success': True, 'path': str(repo_path)}
+
+
+def _git_config(repo_path: Path, key: str, value: str) -> None:
+    """Helper : exécute ``git config <key> <value>`` dans le dépôt."""
+    try:
+        subprocess.run(
+            ['git', 'config', key, value],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=15, check=True,
+        )
+    except Exception:
+        logger.warning(f"git config {key} a échoué (ignoré)")

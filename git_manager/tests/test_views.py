@@ -1,3 +1,4 @@
+import os
 from unittest.mock import patch, MagicMock
 from django.test import TestCase, Client
 from django.urls import reverse
@@ -86,6 +87,61 @@ class TestReposViews(TestCase):
                                     follow=True)
         self.assertEqual(response.status_code, 200)
         self.assertFalse(GitRepo.objects.filter(pk=self.repo.pk).exists())
+
+
+class TestCreateRepoView(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.url = reverse('git_manager:create_repo')
+
+    @patch('git_manager.services.init_repo')
+    def test_create_repo_success(self, mock_init):
+        import tempfile
+        temp_dir = tempfile.mkdtemp()
+        repo_path = os.path.join(temp_dir, 'new-repo')
+        mock_init.return_value = {'success': True, 'path': repo_path}
+
+        response = self.client.post(self.url, {
+            'name': 'brand-new', 'path': repo_path, 'description': 'test'
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(GitRepo.objects.filter(name='brand-new').exists())
+        repo = GitRepo.objects.get(name='brand-new')
+        self.assertEqual(repo.path, repo_path)
+        mock_init.assert_called_once_with(repo_path)
+
+    @patch('git_manager.services.init_repo')
+    def test_create_repo_init_failure(self, mock_init):
+        mock_init.return_value = {'success': False, 'error': 'Disk full'}
+
+        response = self.client.post(self.url, {
+            'name': 'failing', 'path': '/tmp/failing-repo'
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(GitRepo.objects.filter(name='failing').exists())
+
+    def test_create_repo_invalid_form(self):
+        response = self.client.post(self.url, {
+            'name': 'a', 'path': '/tmp/some-path'
+        }, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(GitRepo.objects.filter(name='a').exists())
+
+    @patch('git_manager.services.init_repo')
+    @patch('git_manager.views.GitRepo.objects.create')
+    def test_create_repo_db_error_cleans_up(self, mock_create, mock_init):
+        import tempfile
+        temp_dir = tempfile.mkdtemp()
+        repo_path = os.path.join(temp_dir, 'cleanup-repo')
+        mock_init.return_value = {'success': True, 'path': repo_path}
+        mock_create.side_effect = Exception('DB error')
+
+        response = self.client.post(self.url, {
+            'name': 'cleanup-test', 'path': repo_path
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(GitRepo.objects.filter(name='cleanup-test').exists())
+        mock_init.assert_called_once_with(repo_path)
 
 
 class TestRemotesViews(TestCase):

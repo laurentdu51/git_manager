@@ -12,6 +12,7 @@ urlpatterns = [
     # Dépôts
     path('repos/', views.repos_view, name='repos'),
     path('repos/add/', views.add_repo, name='add_repo'),
+    path('repos/create/', views.create_repo, name='create_repo'),
     path('repos/<int:pk>/', views.repo_detail, name='repo_detail'),
     path('repos/<int:pk>/delete/', views.delete_repo, name='delete_repo'),
     
