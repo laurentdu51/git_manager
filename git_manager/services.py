@@ -106,6 +106,10 @@ class GitService:
         cmd = ['git', 'pull', remote, target_branch]
         logger.info(f"Pull {remote}/{target_branch}")
         result = self._run(cmd)
+        if not result['success'] and 'unrelated histories' in result['stderr']:
+            cmd.append('--allow-unrelated-histories')
+            logger.info(f"Pull retry with --allow-unrelated-histories: {remote}/{target_branch}")
+            result = self._run(cmd)
         if result['success']:
             logger.info(f"Pull OK: {remote}/{target_branch}")
         else:
