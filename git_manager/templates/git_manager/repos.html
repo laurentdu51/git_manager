@@ -28,7 +28,7 @@
         <form method="post" action="{% url 'git_manager:clone_repo' %}">
             {% csrf_token %}
             <div class="fg"><label class="fl">URL du dépôt distant</label><input type="text" name="remote_url" class="fi" placeholder="git@github.com:user/projet.git" required></div>
-            <div class="fg"><label class="fl">Nom du projet</label><input type="text" name="name" class="fi" placeholder="mon-projet" required><p class="muted" style="margin-top:3px">Sera créé dans <code style="color:var(--accent2)">/repos/&lt;nom&gt;</code></p></div>
+            <div class="fg"><label class="fl">Nom du projet</label><input type="text" name="name" class="fi" placeholder="mon-projet (optionnel, dérivé de l'URL)"><p class="muted" style="margin-top:3px">Sera créé dans <code style="color:var(--accent2)">/repos/&lt;nom&gt;</code></p></div>
             <div class="fg">
                 <label class="fl">Clé SSH (optionnel)</label>
                 <select name="ssh_key_id" class="fi">

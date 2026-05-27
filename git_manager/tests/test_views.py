@@ -157,7 +157,7 @@ class TestCloneRepoView(TestCase):
 
     @patch('git_manager.services.clone_repo')
     def test_clone_repo_success(self, mock_clone):
-        mock_clone.return_value = {'success': True, 'path': '/tmp/cloned-repo'}
+        mock_clone.return_value = {'success': True, 'path': '/tmp/cloned-projet'}
         response = self.client.post(self.url, {
             'remote_url': 'git@github.com:user/projet.git',
             'name': 'cloned-projet',
@@ -165,8 +165,19 @@ class TestCloneRepoView(TestCase):
         self.assertEqual(response.status_code, 302)
         repo = GitRepo.objects.filter(name='cloned-projet').first()
         self.assertIsNotNone(repo)
-        self.assertEqual(repo.path, '/tmp/cloned-repo')
+        self.assertEqual(repo.path, '/tmp/cloned-projet')
         self.assertTrue(repo.remotes.filter(name='origin').exists())
+
+    @patch('git_manager.services.clone_repo')
+    def test_clone_repo_name_derived_from_url(self, mock_clone):
+        mock_clone.return_value = {'success': True, 'path': '/repos/auto-name'}
+        response = self.client.post(self.url, {
+            'remote_url': 'git@github.com:user/mon-projet.git',
+            'name': '',
+        })
+        self.assertEqual(response.status_code, 302)
+        repo = GitRepo.objects.filter(name='mon-projet').first()
+        self.assertIsNotNone(repo)
 
     @patch('git_manager.services.clone_repo')
     def test_clone_repo_with_ssh_key(self, mock_clone):

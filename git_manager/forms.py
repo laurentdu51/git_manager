@@ -76,23 +76,46 @@ class CreateRepoForm(forms.Form):
         return str(resolved)
 
 
+def _derive_repo_name(url: str) -> str:
+    """Extrait le nom de projet depuis une URL git."""
+    # Enlève .git suffixe
+    url = url.rstrip('/')
+    if url.endswith('.git'):
+        url = url[:-4]
+    # Prend le dernier segment du chemin
+    if '://' in url:
+        path = url.split('://', 1)[1]
+    elif '@' in url:
+        path = url.split(':', 1)[1] if ':' in url.split('@', 1)[1] else url.split('@', 1)[1]
+    else:
+        path = url
+    # Nettoie le chemin
+    path = path.rstrip('/')
+    return path.rsplit('/', 1)[-1] if '/' in path else path
+
+
 class CloneRepoForm(forms.Form):
     remote_url = forms.CharField(
         max_length=500, validators=[validate_git_url],
         label='URL du dépôt distant',
         help_text='git@github.com:user/projet.git ou https://github.com/user/projet.git',
     )
-    name = forms.CharField(max_length=100, validators=[validate_repo_name])
+    name = forms.CharField(max_length=100, required=False)
     ssh_key_id = forms.IntegerField(required=False, widget=forms.HiddenInput)
     description = forms.CharField(widget=forms.Textarea, required=False)
 
-    def clean_name(self):
-        name = self.cleaned_data['name'].strip()
-        return name
-
-    def clean_remote_url(self):
-        url = self.cleaned_data['remote_url'].strip()
-        return url
+    def clean(self):
+        cleaned = super().clean()
+        name = cleaned.get('name', '').strip()
+        url = cleaned.get('remote_url', '').strip()
+        if not name:
+            name = _derive_repo_name(url) if url else ''
+            cleaned['name'] = name
+        if not name or len(name) < 2:
+            self.add_error('name', 'Le nom doit contenir au moins 2 caractères.')
+        elif not re.match(r'^[a-zA-Z0-9_-]+$', name):
+            self.add_error('name', 'Le nom ne peut contenir que des lettres, chiffres, tirets et underscores.')
+        return cleaned
 
 
 class GitRemoteForm(forms.Form):

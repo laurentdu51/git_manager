@@ -180,6 +180,7 @@ def clone_repo(request):
                 messages.error(request, error)
         return redirect('git_manager:repos')
 
+    name = form.cleaned_data['name']
     target_path = f'/repos/{name}'
     ssh_key = SshKey.objects.filter(pk=ssh_key_id).first() if ssh_key_id else None
     key_path = ssh_key.key_path if ssh_key else None
