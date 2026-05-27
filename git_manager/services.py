@@ -193,6 +193,39 @@ class GitService:
         return result
 
 
+    def list_remote_branches(self) -> list:
+        """Liste les branches distantes (remote-tracking) triées par remote."""
+        r = self._run(['git', 'branch', '-r', '-v', '--no-color'])
+        branches = []
+        if not r['success']:
+            return branches
+        for line in r['stdout'].splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            # Format : "remote/branch    hash message"
+            parts = line.split(None, 2)
+            if len(parts) >= 2:
+                full_name = parts[0]
+                commit_hash = parts[1][:7]
+                commit_msg = parts[2] if len(parts) > 2 else ''
+                slash = full_name.find('/')
+                if slash > 0:
+                    remote_name = full_name[:slash]
+                    branch_name = full_name[slash+1:]
+                else:
+                    remote_name = full_name
+                    branch_name = full_name
+                branches.append({
+                    'full_name': full_name,
+                    'remote': remote_name,
+                    'branch': branch_name,
+                    'hash': commit_hash,
+                    'message': commit_msg,
+                })
+        return branches
+
+
 def init_repo(path: str, default_branch: str = 'main') -> dict:
     """Crée un nouveau dépôt Git vide à l'emplacement donné.
 

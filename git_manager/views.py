@@ -70,6 +70,7 @@ def repo_detail(request, pk):
     remotes = repo.remotes.select_related('ssh_key').all()
     push_logs = PushLog.objects.filter(repo=repo).select_related('remote')[:20]
     git_log = svc.get_log(10) if is_git else []
+    remote_branches = svc.list_remote_branches() if is_git else []
 
     return render(request, 'git_manager/repo_detail.html', {
         'repo': repo,
@@ -83,7 +84,8 @@ def repo_detail(request, pk):
         'server_ip': server_ip,
         'ssh_port': ssh_port,
         'ssh_keys': SshKey.objects.all(),
-        'relay_remote_cmd': f"git remote add relay ssh://root@{server_ip}:{ssh_port}{repo.path}"
+        'relay_remote_cmd': f"git remote add relay ssh://root@{server_ip}:{ssh_port}{repo.path}",
+        'remote_branches': remote_branches,
     })
 
 @require_POST

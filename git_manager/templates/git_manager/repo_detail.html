@@ -112,6 +112,26 @@
 
 </div>
 
+<!-- Branches distantes -->
+{% if remote_branches %}
+<div class="card">
+    <div class="card-title">☁ Branches distantes ({{ remote_branches|length }})</div>
+    <table class="table">
+        <thead><tr><th>Remote</th><th>Branche</th><th>Hash</th><th>Message</th></tr></thead>
+        <tbody>
+        {% for rb in remote_branches %}
+        <tr>
+            <td><strong>{{ rb.remote }}</strong></td>
+            <td><span class="hash">{{ rb.branch }}</span></td>
+            <td><span class="hash">{{ rb.hash }}</span></td>
+            <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ rb.message }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
 <!-- Logs d'actions pour ce dépôt -->
 <div class="card">
     <div class="card-title" style="justify-content:space-between">
@@ -336,11 +356,12 @@ function fetchRemote(pk, name) {
     fetch(`/remotes/${pk}/fetch/`)
         .then(r => r.json())
         .then(d => {
-            const msg = d.success
-                ? `✅ Fetch ${name} réussi`
-                : `❌ Fetch ${name} échoué: ${d.error}`;
-            alert(msg);
-            btn.textContent = '⬇ Fetch ' + name; btn.disabled = false;
+            if (d.success) {
+                location.reload();
+            } else {
+                alert('❌ Fetch ' + name + ' échoué: ' + d.error);
+                btn.textContent = '⬇ Fetch ' + name; btn.disabled = false;
+            }
         })
         .catch(e => {
             alert('❌ Erreur: ' + e.message);
