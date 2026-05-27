@@ -102,7 +102,10 @@ class GitService:
             return {'success': False, 'stdout': '', 'stderr': 'Unable to determine current branch'}
 
         target_branch = branch or current_branch
+
         self._run(['git', 'config', 'pull.rebase', 'false'])
+        self._run(['git', 'merge', '--abort'])  # Nettoie un éventuel merge précédent
+
         cmd = ['git', 'pull', remote, target_branch]
         logger.info(f"Pull {remote}/{target_branch}")
         result = self._run(cmd)
