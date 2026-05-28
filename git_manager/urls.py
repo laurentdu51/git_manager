@@ -39,6 +39,9 @@ urlpatterns = [
     path('ssh/<str:name>/pubkey/', ssh_views.show_public_key, name='ssh_pubkey'),
     path('ssh/rename/<str:name>/', ssh_views.rename_key, name='ssh_rename'),
     path('ssh/test/', ssh_views.test_connection, name='ssh_test'),
+    path('ssh/authorize/', ssh_views.authorize_key, name='ssh_authorize'),
+    path('ssh/authorized-keys/', ssh_views.authorized_keys_list, name='ssh_authorized_keys'),
+    path('ssh/authorized-keys/remove/', ssh_views.remove_authorized_key, name='ssh_authorized_key_remove'),
     
     # SSH local
     path('ssh/local/', views.ssh_local_view, name='ssh_local'),

@@ -482,10 +482,12 @@ def ssh_local_view(request):
     server_ip = detect_server_ip(request)
     ssh_port = detect_ssh_port()
     public_key = ssh_service.get_public_key()
+    authorized_keys = ssh_service.list_authorized_keys()
     return render(request, 'git_manager/ssh_local.html', {
         'server_ip': server_ip,
         'ssh_port': ssh_port,
         'public_key': public_key,
+        'authorized_keys': authorized_keys,
         'ssh_keys': SshKey.objects.all(),
         'repos': GitRepo.objects.filter(is_active=True),
         'ssh_enabled': settings.ENABLE_SSH_SERVER,

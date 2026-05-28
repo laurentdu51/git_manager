@@ -6,6 +6,7 @@ from typing import Optional, List
 logger = logging.getLogger('git_manager')
 
 SSH_DIR = Path('/root/.ssh')
+AUTHORIZED_KEYS_PATH = SSH_DIR / 'authorized_keys'
 
 
 def _ensure_ssh_dir():
@@ -226,5 +227,76 @@ def rename_key(old_name: str, new_name: str) -> dict:
         _rebuild_ssh_config()
         logger.info(f"SSH key renamed: {old_name} → {new_name}")
         return {'success': True, 'new_key_path': str(new_priv)}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def _validate_public_key(pub: str) -> bool:
+    return any(pub.startswith(prefix) for prefix in (
+        'ssh-ed25519', 'ssh-rsa', 'ecdsa-sha2', 'ssh-dss', 'sk-ssh-ed25519', 'sk-ecdsa-sha2'
+    ))
+
+
+def _parse_authorized_keys() -> list[dict]:
+    keys = []
+    if not AUTHORIZED_KEYS_PATH.exists():
+        return keys
+    for i, line in enumerate(AUTHORIZED_KEYS_PATH.read_text().splitlines()):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = line.split()
+        if len(parts) >= 2:
+            keys.append({
+                'index': i,
+                'key_type': parts[0],
+                'key_hash': parts[1][:24] + '...' if len(parts[1]) > 24 else parts[1],
+                'comment': parts[2] if len(parts) > 2 else '',
+                'full_line': line,
+            })
+    return keys
+
+
+def list_authorized_keys() -> list[dict]:
+    return _parse_authorized_keys()
+
+
+def authorize_key(public_key: str) -> dict:
+    _ensure_ssh_dir()
+    pub = public_key.strip()
+    if not pub:
+        return {'success': False, 'error': 'Clé publique vide.'}
+    if not _validate_public_key(pub):
+        return {'success': False, 'error': 'Format de clé invalide. Doit commencer par ssh-ed25519, ssh-rsa, etc.'}
+    try:
+        if AUTHORIZED_KEYS_PATH.exists():
+            existing = AUTHORIZED_KEYS_PATH.read_text().splitlines()
+            if pub in [l.strip() for l in existing]:
+                return {'success': False, 'error': 'Cette clé est déjà autorisée.'}
+        with open(AUTHORIZED_KEYS_PATH, 'a') as f:
+            f.write(pub + '\n')
+        AUTHORIZED_KEYS_PATH.chmod(0o600)
+        logger.info(f"Clé publique ajoutée à authorized_keys")
+        return {'success': True}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
+def remove_authorized_key(index: int) -> dict:
+    if not AUTHORIZED_KEYS_PATH.exists():
+        return {'success': False, 'error': 'Aucune clé autorisée.'}
+    try:
+        lines = AUTHORIZED_KEYS_PATH.read_text().splitlines()
+        if index < 0 or index >= len(lines):
+            return {'success': False, 'error': f'Index {index} hors limites.'}
+        key_type = 'inconnue'
+        parts = lines[index].split()
+        if len(parts) >= 2:
+            key_type = f'{parts[0]} {parts[1][:16]}...'
+        removed = lines.pop(index)
+        AUTHORIZED_KEYS_PATH.write_text('\n'.join(lines) + ('\n' if lines else ''))
+        AUTHORIZED_KEYS_PATH.chmod(0o600)
+        logger.info(f"Clé supprimée de authorized_keys (index {index})")
+        return {'success': True, 'removed': key_type}
     except Exception as e:
         return {'success': False, 'error': str(e)}

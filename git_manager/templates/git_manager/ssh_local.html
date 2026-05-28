@@ -77,11 +77,14 @@ cat ~/.ssh/git_relay.pub</pre>
         <p class="muted" style="margin-bottom:6px;font-size:.8rem">Collez votre clé publique :</p>
         <textarea id="global-pubkey" class="fi" rows="2"
             placeholder="ssh-ed25519 AAAA..."
-            style="font-size:.7rem;resize:vertical;margin-bottom:6px"
-            oninput="updateAuthorizeCmd(this.value)"></textarea>
-        <pre class="code" id="authorize-cmd" style="font-size:.7rem;white-space:pre-wrap">{{ ssh_command }} \
-  "echo 'VOTRE_CLE_PUB' >> ~/.ssh/authorized_keys"</pre>
-        <button onclick="copyEl('authorize-cmd')" class="btn btn-s" style="margin-top:7px;padding:3px 9px;font-size:.72rem">📋 Copier la commande</button>
+            style="font-size:.7rem;resize:vertical;margin-bottom:6px"></textarea>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button onclick="authorizeKey()" class="btn btn-p" id="auth-btn" style="padding:4px 12px;font-size:.75rem">
+                ✅ Autoriser sur le relai
+            </button>
+            <button onclick="copyEl('global-pubkey')" class="btn btn-s" style="padding:3px 9px;font-size:.72rem">📋 Copier la clé</button>
+        </div>
+        <div id="auth-result" style="margin-top:6px"></div>
     </div>
 
     <div class="card">
@@ -104,6 +107,36 @@ cat ~/.ssh/git_relay.pub</pre>
             Testez la connexion : <code style="color:var(--accent2)">ssh -p {{ ssh_port }} root@{{ server_ip }} "hostname"</code>
         </p>
     </div>
+</div>
+
+<!-- Clés autorisées sur le relai -->
+<div class="card">
+    <div class="card-title" style="justify-content:space-between">
+        <span>🔑 Clés autorisées sur le relai</span>
+        <span class="muted" style="font-size:.72rem" id="auth-count">{{ authorized_keys|length }} clé(s)</span>
+    </div>
+    <div id="authorized-keys-list">
+        {% if authorized_keys %}
+        <table class="table">
+            <thead><tr><th>Type</th><th>Empreinte</th><th>Commentaire</th><th></th></tr></thead>
+            <tbody>
+            {% for k in authorized_keys %}
+            <tr id="auth-row-{{ k.index }}">
+                <td><code style="font-size:.7rem">{{ k.key_type }}</code></td>
+                <td><code style="font-size:.68rem;word-break:break-all">{{ k.key_hash }}</code></td>
+                <td><span class="muted" style="font-size:.75rem">{{ k.comment|default:"—" }}</span></td>
+                <td>
+                    <button onclick="removeAuthorizedKey({{ k.index }})" class="btn btn-s" style="padding:2px 7px;font-size:.68rem;color:var(--danger)">✕</button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="muted" style="font-size:.78rem">Aucune clé autorisée pour le moment.</p>
+        {% endif %}
+    </div>
+    <button onclick="refreshAuthorizedKeys()" class="btn btn-s" style="margin-top:6px;padding:3px 8px;font-size:.7rem">🔄 Actualiser</button>
 </div>
 
 <!-- Commandes par dépôt -->
@@ -181,12 +214,6 @@ function copyEl(id) {
     });
 }
 
-function updateAuthorizeCmd(pubkey) {
-    const safe = pubkey.trim() || 'VOTRE_CLE_PUB';
-    document.getElementById('authorize-cmd').textContent =
-        `{{ ssh_command }} \\\n  "echo '${safe}' >> ~/.ssh/authorized_keys"`;
-}
-
 function updateRepoCmd(pk, branch) {
     const b = branch || 'main';
     const el = document.getElementById('repo-cmd-' + pk);
@@ -196,6 +223,98 @@ function updateRepoCmd(pk, branch) {
         el.textContent =
             `cd /votre/projet/local\ngit remote add relay ${relayUrl}\ngit push relay ${b}`;
     }
+}
+
+function authorizeKey() {
+    const pubkey = document.getElementById('global-pubkey').value.trim();
+    const btn = document.getElementById('auth-btn');
+    const result = document.getElementById('auth-result');
+
+    if (!pubkey) {
+        result.innerHTML = '<div class="msg msg-error" style="font-size:.78rem">❌ Collez d\'abord votre clé publique.</div>';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Autorisation...';
+    result.innerHTML = '';
+
+    fetch('/ssh/authorize/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+        body: JSON.stringify({public_key: pubkey})
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                result.innerHTML = '<div class="msg msg-success" style="font-size:.78rem">✅ Clé autorisée sur le relai !</div>';
+                document.getElementById('global-pubkey').value = '';
+                refreshAuthorizedKeys();
+            } else {
+                result.innerHTML = '<div class="msg msg-error" style="font-size:.78rem">❌ ' + (data.error || 'Erreur') + '</div>';
+            }
+        })
+        .catch(() => {
+            result.innerHTML = '<div class="msg msg-error" style="font-size:.78rem">❌ Erreur réseau</div>';
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = '✅ Autoriser sur le relai';
+        });
+}
+
+function refreshAuthorizedKeys() {
+    fetch('/ssh/authorized-keys/')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) return;
+            const keys = data.keys;
+            const container = document.getElementById('authorized-keys-list');
+            const countEl = document.getElementById('auth-count');
+            countEl.textContent = keys.length + ' clé(s)';
+
+            if (keys.length === 0) {
+                container.innerHTML = '<p class="muted" style="font-size:.78rem">Aucune clé autorisée pour le moment.</p>';
+                return;
+            }
+
+            let html = '<table class="table"><thead><tr><th>Type</th><th>Empreinte</th><th>Commentaire</th><th></th></tr></thead><tbody>';
+            for (const k of keys) {
+                html += '<tr id="auth-row-' + k.index + '">'
+                    + '<td><code style="font-size:.7rem">' + escapeHtml(k.key_type) + '</code></td>'
+                    + '<td><code style="font-size:.68rem;word-break:break-all">' + escapeHtml(k.key_hash) + '</code></td>'
+                    + '<td><span class="muted" style="font-size:.75rem">' + escapeHtml(k.comment || '—') + '</span></td>'
+                    + '<td><button onclick="removeAuthorizedKey(' + k.index + ')" class="btn btn-s" style="padding:2px 7px;font-size:.68rem;color:var(--danger)">✕</button></td>'
+                    + '</tr>';
+            }
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        });
+}
+
+function removeAuthorizedKey(index) {
+    if (!confirm('Supprimer cette clé autorisée ?')) return;
+
+    fetch('/ssh/authorized-keys/remove/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
+        body: JSON.stringify({index: index})
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                refreshAuthorizedKeys();
+            } else {
+                alert('❌ ' + (data.error || 'Erreur'));
+            }
+        })
+        .catch(() => alert('❌ Erreur réseau'));
+}
+
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
 
 function testSshConnection() {
