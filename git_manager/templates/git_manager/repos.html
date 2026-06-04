@@ -14,6 +14,35 @@
         </form>
     </div>
     <div class="card">
+        <div class="card-title">✚ Créer un nouveau dépôt</div>
+        <form method="post" action="{% url 'git_manager:create_repo' %}">
+            {% csrf_token %}
+            <div class="fg"><label class="fl">Nom du projet</label><input type="text" name="name" class="fi" placeholder="mon-site, blog…" required></div>
+            <div class="fg"><label class="fl">Chemin local</label><input type="text" name="path" class="fi" placeholder="/repos/mon-site" required><p class="muted" style="margin-top:3px">Le dossier sera créé automatiquement et initialisé en Git.</p></div>
+            <div class="fg"><label class="fl">Description</label><input type="text" name="description" class="fi" placeholder="optionnel"></div>
+            <button type="submit" class="btn btn-p">✚ Créer</button>
+        </form>
+    </div>
+    <div class="card">
+        <div class="card-title">⬇ Cloner un dépôt distant</div>
+        <form method="post" action="{% url 'git_manager:clone_repo' %}">
+            {% csrf_token %}
+            <div class="fg"><label class="fl">URL du dépôt distant</label><input type="text" name="remote_url" class="fi" placeholder="git@github.com:user/projet.git" required></div>
+            <div class="fg"><label class="fl">Nom du projet</label><input type="text" name="name" class="fi" placeholder="mon-projet (optionnel, dérivé de l'URL)"><p class="muted" style="margin-top:3px">Sera créé dans <code style="color:var(--accent2)">/repos/&lt;nom&gt;</code></p></div>
+            <div class="fg">
+                <label class="fl">Clé SSH (optionnel)</label>
+                <select name="ssh_key_id" class="fi">
+                    <option value="">— Aucune (par défaut) —</option>
+                    {% for key in ssh_keys %}
+                    <option value="{{ key.pk }}">{{ key.name }} ({{ key.key_type }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="fg"><label class="fl">Description</label><input type="text" name="description" class="fi" placeholder="optionnel"></div>
+            <button type="submit" class="btn btn-p">⬇ Cloner</button>
+        </form>
+    </div>
+    <div class="card">
         <div class="card-title">ℹ Chemins dans Docker</div>
         <p class="muted" style="margin-bottom:8px;font-size:.8rem">Montez vos dépôts comme volumes :</p>
         <pre class="code">volumes:

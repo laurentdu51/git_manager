@@ -9,8 +9,11 @@ from git_manager.forms import (
     validate_ssh_key_path,
     GitRepoForm,
     GitRemoteForm,
+    CreateRepoForm,
+    CloneRepoForm,
 )
 from django.core.exceptions import ValidationError
+from git_manager.forms import _derive_repo_name
 
 
 class TestValidators(TestCase):
@@ -103,3 +106,114 @@ class TestGitRemoteForm(TestCase):
         })
         self.assertFalse(form.is_valid())
         self.assertIn('url', form.errors)
+
+
+class TestCloneRepoForm(TestCase):
+    def test_valid_form(self):
+        form = CloneRepoForm({
+            'remote_url': 'git@github.com:user/projet.git',
+            'name': 'mon-projet',
+            'description': 'Mon projet cloné',
+        })
+        self.assertTrue(form.is_valid())
+
+    def test_name_derived_from_ssh_url(self):
+        form = CloneRepoForm({
+            'remote_url': 'git@github.com:user/mon-projet.git',
+            'name': '',
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['name'], 'mon-projet')
+
+    def test_name_derived_from_https_url(self):
+        form = CloneRepoForm({
+            'remote_url': 'https://github.com/user/mon-projet.git',
+            'name': '',
+        })
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data['name'], 'mon-projet')
+
+    def test_name_derived_from_url_without_dot_git(self):
+        form = CloneRepoForm({
+            'remote_url': 'git@github.com:user/mon-projet',
+            'name': '',
+        })
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data['name'], 'mon-projet')
+
+    def test_name_derived_ssh_url_without_path(self):
+        form = CloneRepoForm({
+            'remote_url': 'git@github.com:user/projet.git',
+            'name': '',
+        })
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data['name'], 'projet')
+
+    def test_empty_url_without_name(self):
+        form = CloneRepoForm({
+            'remote_url': '',
+            'name': '',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('name', form.errors)
+
+    def test_invalid_url(self):
+        form = CloneRepoForm({
+            'remote_url': 'not-a-url',
+            'name': 'mon-projet',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('remote_url', form.errors)
+
+    def test_invalid_name(self):
+        form = CloneRepoForm({
+            'remote_url': 'git@github.com:user/projet.git',
+            'name': 'a',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('name', form.errors)
+
+    def test_empty_url(self):
+        form = CloneRepoForm({
+            'remote_url': '',
+            'name': 'mon-projet',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('remote_url', form.errors)
+
+
+class TestCreateRepoForm(TestCase):
+    def test_valid_form(self):
+        import tempfile
+        temp_dir = tempfile.mkdtemp()
+        new_path = os.path.join(temp_dir, 'new-repo')
+        form = CreateRepoForm({
+            'name': 'new-repo',
+            'path': new_path,
+            'description': 'Mon nouveau dépôt'
+        })
+        self.assertTrue(form.is_valid())
+
+    def test_invalid_name(self):
+        import tempfile
+        temp_dir = tempfile.mkdtemp()
+        form = CreateRepoForm({
+            'name': 'a',
+            'path': os.path.join(temp_dir, 'new-repo'),
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('name', form.errors)
+
+    def test_clean_path_existing_git_repo(self):
+        import tempfile
+        import os
+        temp_dir = tempfile.mkdtemp()
+        os.chdir(temp_dir)
+        os.system('git init -q')
+        form = CreateRepoForm({
+            'name': 'test',
+            'path': temp_dir,
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('path', form.errors)
+        self.assertIn('existe déjà', form.errors['path'][0])

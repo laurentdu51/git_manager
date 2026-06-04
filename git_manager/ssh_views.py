@@ -121,3 +121,35 @@ def test_connection(request):
 def show_public_key(request, name):
     key = get_object_or_404(SshKey, name=name)
     return JsonResponse({'public_key': key.public_key, 'fingerprint': key.fingerprint})
+
+
+@require_POST
+def authorize_key(request):
+    import json
+    try:
+        data = json.loads(request.body) if request.body else request.POST
+    except json.JSONDecodeError:
+        data = request.POST
+    public_key = data.get('public_key', '').strip()
+    result = ssh_service.authorize_key(public_key)
+    return JsonResponse(result)
+
+
+def authorized_keys_list(request):
+    keys = ssh_service.list_authorized_keys()
+    return JsonResponse({'success': True, 'keys': keys})
+
+
+@require_POST
+def remove_authorized_key(request):
+    import json
+    try:
+        data = json.loads(request.body) if request.body else request.POST
+    except json.JSONDecodeError:
+        data = request.POST
+    try:
+        index = int(data.get('index', -1))
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Index invalide.'})
+    result = ssh_service.remove_authorized_key(index)
+    return JsonResponse(result)

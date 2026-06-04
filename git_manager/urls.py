@@ -12,6 +12,8 @@ urlpatterns = [
     # Dépôts
     path('repos/', views.repos_view, name='repos'),
     path('repos/add/', views.add_repo, name='add_repo'),
+    path('repos/create/', views.create_repo, name='create_repo'),
+    path('repos/clone/', views.clone_repo, name='clone_repo'),
     path('repos/<int:pk>/', views.repo_detail, name='repo_detail'),
     path('repos/<int:pk>/delete/', views.delete_repo, name='delete_repo'),
     
@@ -37,6 +39,9 @@ urlpatterns = [
     path('ssh/<str:name>/pubkey/', ssh_views.show_public_key, name='ssh_pubkey'),
     path('ssh/rename/<str:name>/', ssh_views.rename_key, name='ssh_rename'),
     path('ssh/test/', ssh_views.test_connection, name='ssh_test'),
+    path('ssh/authorize/', ssh_views.authorize_key, name='ssh_authorize'),
+    path('ssh/authorized-keys/', ssh_views.authorized_keys_list, name='ssh_authorized_keys'),
+    path('ssh/authorized-keys/remove/', ssh_views.remove_authorized_key, name='ssh_authorized_key_remove'),
     
     # SSH local
     path('ssh/local/', views.ssh_local_view, name='ssh_local'),

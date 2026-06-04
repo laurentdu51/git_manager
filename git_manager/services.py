@@ -102,9 +102,17 @@ class GitService:
             return {'success': False, 'stdout': '', 'stderr': 'Unable to determine current branch'}
 
         target_branch = branch or current_branch
+
+        self._run(['git', 'config', 'pull.rebase', 'false'])
+        self._run(['git', 'merge', '--abort'])  # Nettoie un éventuel merge précédent
+
         cmd = ['git', 'pull', remote, target_branch]
         logger.info(f"Pull {remote}/{target_branch}")
         result = self._run(cmd)
+        if not result['success'] and 'unrelated histories' in result['stderr']:
+            cmd.append('--allow-unrelated-histories')
+            logger.info(f"Pull retry with --allow-unrelated-histories: {remote}/{target_branch}")
+            result = self._run(cmd)
         if result['success']:
             logger.info(f"Pull OK: {remote}/{target_branch}")
         else:
@@ -191,3 +199,131 @@ class GitService:
         result = self.get_ahead_behind(remote, branch)
         cache.set(cache_key, result, timeout)
         return result
+
+
+    def list_remote_branches(self) -> list:
+        """Liste les branches distantes (remote-tracking) triées par remote."""
+        r = self._run(['git', 'branch', '-r', '-v', '--no-color'])
+        branches = []
+        if not r['success']:
+            return branches
+        for line in r['stdout'].splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            # Format : "remote/branch    hash message"
+            parts = line.split(None, 2)
+            if len(parts) >= 2:
+                full_name = parts[0]
+                commit_hash = parts[1][:7]
+                commit_msg = parts[2] if len(parts) > 2 else ''
+                slash = full_name.find('/')
+                if slash > 0:
+                    remote_name = full_name[:slash]
+                    branch_name = full_name[slash+1:]
+                else:
+                    remote_name = full_name
+                    branch_name = full_name
+                branches.append({
+                    'full_name': full_name,
+                    'remote': remote_name,
+                    'branch': branch_name,
+                    'hash': commit_hash,
+                    'message': commit_msg,
+                })
+        return branches
+
+
+def clone_repo(url: str, target_path: str, ssh_key_path: str = None,
+               remote_name: str = 'origin') -> dict:
+    """Clone un dépôt distant en local.
+
+    Crée le dossier parent si nécessaire, exécute ``git clone``,
+    puis applique la configuration standard du gestionnaire.
+    """
+    repo_path = Path(target_path).expanduser().resolve()
+    parent = repo_path.parent
+    try:
+        parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return {'success': False, 'error': f"Impossible de créer le dossier parent : {e}"}
+
+    env = os.environ.copy()
+    if ssh_key_path:
+        key = str(Path(ssh_key_path).expanduser())
+        env['GIT_SSH_COMMAND'] = f'ssh -i {key} -o IdentitiesOnly=yes'
+
+    cmd = ['git', 'clone', '--origin', remote_name, url, str(repo_path)]
+    logger.info(f"Clone {url} → {repo_path}")
+    try:
+        subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=True, env=env)
+    except subprocess.CalledProcessError as e:
+        return {'success': False, 'error': e.stderr.strip() or str(e)}
+    except subprocess.TimeoutExpired:
+        return {'success': False, 'error': 'Timeout (120s)'}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+    _git_config(repo_path, 'receive.denyCurrentBranch', 'updateInstead')
+    _git_config(repo_path, 'pull.rebase', 'false')
+    _git_config(repo_path, 'user.email', 'deploy@local.test')
+    _git_config(repo_path, 'user.name', 'Git Manager')
+
+    logger.info(f"Clone terminé : {url} → {repo_path}")
+    return {'success': True, 'path': str(repo_path)}
+
+
+def init_repo(path: str, default_branch: str = 'main') -> dict:
+    """Crée un nouveau dépôt Git vide à l'emplacement donné.
+
+    Crée le dossier si nécessaire, exécute ``git init``,
+    configure l'utilisateur et autorise les pushes sur la branche courante.
+    """
+    repo_path = Path(path).expanduser().resolve()
+    try:
+        repo_path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return {'success': False, 'error': f"Impossible de créer le dossier : {e}"}
+
+    try:
+        subprocess.run(
+            ['git', 'init', f'--initial-branch={default_branch}'],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=30, check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        return {'success': False, 'error': f"git init a échoué : {e.stderr or e}"}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+    # Permet les pushes vers la branche courante (utile pour le relai SSH)
+    _git_config(repo_path, 'receive.denyCurrentBranch', 'updateInstead')
+    # Stratégie pull : merge plutôt que rebase (évite l'erreur "divergent branches")
+    _git_config(repo_path, 'pull.rebase', 'false')
+    # Identité du gestionnaire
+    _git_config(repo_path, 'user.email', 'deploy@local.test')
+    _git_config(repo_path, 'user.name', 'Git Manager')
+
+    # Commit initial pour établir la branche (sinon push refuse)
+    try:
+        subprocess.run(
+            ['git', 'commit', '--allow-empty', '-m', 'Initial commit'],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=30, check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        return {'success': False, 'error': f"Commit initial a échoué : {e.stderr or e}"}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+    logger.info(f"Nouveau dépôt initialisé : {repo_path}")
+    return {'success': True, 'path': str(repo_path)}
+
+
+def _git_config(repo_path: Path, key: str, value: str) -> None:
+    """Helper : exécute ``git config <key> <value>`` dans le dépôt."""
+    try:
+        subprocess.run(
+            ['git', 'config', key, value],
+            cwd=str(repo_path), capture_output=True, text=True, timeout=15, check=True,
+        )
+    except Exception:
+        logger.warning(f"git config {key} a échoué (ignoré)")

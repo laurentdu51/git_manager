@@ -112,6 +112,26 @@
 
 </div>
 
+<!-- Branches distantes -->
+{% if remote_branches %}
+<div class="card">
+    <div class="card-title">☁ Branches distantes ({{ remote_branches|length }})</div>
+    <table class="table">
+        <thead><tr><th>Remote</th><th>Branche</th><th>Hash</th><th>Message</th></tr></thead>
+        <tbody>
+        {% for rb in remote_branches %}
+        <tr>
+            <td><strong>{{ rb.remote }}</strong></td>
+            <td><span class="hash">{{ rb.branch }}</span></td>
+            <td><span class="hash">{{ rb.hash }}</span></td>
+            <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ rb.message }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
 <!-- Logs d'actions pour ce dépôt -->
 <div class="card">
     <div class="card-title" style="justify-content:space-between">
@@ -169,147 +189,44 @@
         <span style="color:var(--accent)">🐙 GitHub/GitLab</span>
     </div>
 
-    <!-- Étapes en accordion -->
-    <div id="ssh-steps">
-
-        <div class="ssh-step" onclick="toggleStep(1)">
-            <div class="ssh-step-header">
-                <span>① Générer une clé SSH sur votre machine locale</span>
-                <span id="arrow-1">▶</span>
-            </div>
-            <div class="ssh-step-body" id="step-1" style="display:none">
-                <pre class="code">ssh-keygen -t ed25519 -C "relay-{{ repo.name }}" \
+    <!-- Toutes les commandes SSH en un bloc -->
+    <div style="margin-top:16px">
+        <pre class="code" id="ssh-all-commands"># ① Générer la clé locale
+ssh-keygen -t ed25519 -C "relay-{{ repo.name }}" \
   -f ~/.ssh/relay_{{ repo.name|lower }} -N ""
+cat ~/.ssh/relay_{{ repo.name|lower }}.pub
 
-# Afficher la clé publique à copier
-cat ~/.ssh/relay_{{ repo.name|lower }}.pub</pre>
-            </div>
-        </div>
-
-        <div class="ssh-step" onclick="toggleStep(2)">
-            <div class="ssh-step-header">
-                <span>② Autoriser votre clé locale sur ce relai</span>
-                <span id="arrow-2">▶</span>
-            </div>
-            <div class="ssh-step-body" id="step-2" style="display:none">
-                <p class="muted" style="margin-bottom:8px;font-size:.8rem">Collez ici votre clé publique locale (<code style="color:var(--accent2)">~/.ssh/relay_{{ repo.name|lower }}.pub</code>) pour générer la commande :</p>
-                <textarea id="local-pubkey-input" class="fi" rows="3" placeholder="ssh-ed25519 AAAA... relay-{{ repo.name }}"
-                    style="font-size:.7rem;resize:vertical;margin-bottom:8px"
-                    oninput="updateAuthorizeCmd(this.value)"></textarea>
-                <pre class="code" id="authorize-cmd" style="color:var(--accent)">docker exec -it git_manager bash -c \
+# ② Autoriser la clé sur le relai
+docker exec -it git_manager bash -c \
   "echo 'VOTRE_CLE_PUB' >> /root/.ssh/authorized_keys && \
-  chmod 600 /root/.ssh/authorized_keys"</pre>
-                <button onclick="copyCmd('authorize-cmd')" class="btn btn-s" style="margin-top:7px;padding:4px 10px;font-size:.72rem">📋 Copier</button>
-            </div>
-        </div>
+  chmod 600 /root/.ssh/authorized_keys"
 
-        <div class="ssh-step" onclick="toggleStep(3)">
-            <div class="ssh-step-header">
-                <span>③ Configurer ~/.ssh/config sur votre machine</span>
-                <span id="arrow-3">▶</span>
-            </div>
-            <div class="ssh-step-body" id="step-3" style="display:none">
-                <pre class="code" id="ssh-config-cmd">Host relay-{{ repo.name|lower }}
+# ③ ~/.ssh/config
+Host relay-{{ repo.name|lower }}
   HostName {{ server_ip }}
   Port {{ ssh_port }}
   User root
   IdentityFile ~/.ssh/relay_{{ repo.name|lower }}
   IdentitiesOnly yes
-  StrictHostKeyChecking no</pre>
-                <button onclick="copyCmd('ssh-config-cmd')" class="btn btn-s" style="margin-top:7px;padding:4px 10px;font-size:.72rem">📋 Copier</button>
-            </div>
-        </div>
+  StrictHostKeyChecking no
 
-        <div class="ssh-step" onclick="toggleStep(4)">
-            <div class="ssh-step-header">
-                <span>④ Ajouter le relai comme remote Git</span>
-                <span id="arrow-4">▶</span>
-            </div>
-            <div class="ssh-step-body" id="step-4" style="display:none">
-                <p class="muted" style="margin-bottom:8px;font-size:.8rem">Dans votre dépôt local :</p>
-                <pre class="code" id="add-remote-cmd">git remote add relay ssh://root@{{ server_ip }}:{{ ssh_port }}{{ repo.path }}</pre>
-                <button onclick="copyCmd('add-remote-cmd')" class="btn btn-s" style="margin-top:7px;padding:4px 10px;font-size:.72rem">📋 Copier</button>
-            </div>
-        </div>
-
-        <div class="ssh-step" onclick="toggleStep(5)">
-            <div class="ssh-step-header">
-                <span>⑤ Pousser vers le relai</span>
-                <span id="arrow-5">▶</span>
-            </div>
-            <div class="ssh-step-body" id="step-5" style="display:none">
-                {% if remotes %}
-                {% for remote in remotes %}
-                <p class="muted" style="margin-bottom:5px;font-size:.78rem">→ Push vers <strong>{{ remote.name }}/{{ remote.branch }}</strong> :</p>
-                <pre class="code" style="margin-bottom:10px">git push relay {{ remote.branch }}</pre>
-                {% endfor %}
-                {% else %}
-                <pre class="code">git push relay main</pre>
-                {% endif %}
-                <p class="muted" style="margin-top:8px;font-size:.75rem">
-                    💡 Le relai repoussera automatiquement vers GitHub si un hook pre-push est configuré.
-                </p>
-            </div>
-        </div>
-
-    </div>
-
-    <!-- Bouton tout copier en une fois -->
-    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-        <button onclick="copyAllSteps()" class="btn btn-p">📋 Copier toutes les commandes</button>
-        <div id="all-cmds-result" style="display:none;margin-top:10px">
-            <pre class="code" id="all-cmds" style="font-size:.7rem;color:var(--accent)"></pre>
-        </div>
+# ④ Remote + push
+git remote add relay ssh://root@{{ server_ip }}:{{ ssh_port }}{{ repo.path }}
+git push relay main</pre>
+        <button onclick="copyAll()" class="btn btn-p" style="margin-top:8px">📋 Copier toutes les commandes</button>
     </div>
 </div>
 
-<style>
-.ssh-step { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; }
-.ssh-step-header { padding: 11px 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: .82rem; font-weight: 600; background: var(--surface2); transition: background .15s; }
-.ssh-step-header:hover { background: var(--border); }
-.ssh-step-body { padding: 14px 15px; background: var(--surface); }
-</style>
+
 
 <script>
-function toggleStep(n) {
-    const body = document.getElementById('step-' + n);
-    const arrow = document.getElementById('arrow-' + n);
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : 'block';
-    arrow.textContent = open ? '▶' : '▼';
-}
-
-function copyCmd(id) {
-    const txt = document.getElementById(id).textContent;
+function copyAll() {
+    const txt = document.getElementById('ssh-all-commands').textContent;
     navigator.clipboard.writeText(txt).then(() => {
-        event.target.textContent = '✅ Copié!';
-        setTimeout(() => event.target.textContent = '📋 Copier', 2000);
+        const btn = event.target;
+        btn.textContent = '✅ Copié!';
+        setTimeout(() => btn.textContent = '📋 Copier toutes les commandes', 2000);
     });
-}
-
-function updateAuthorizeCmd(pubkey) {
-    const safe = pubkey.trim() || 'VOTRE_CLE_PUB';
-    document.getElementById('authorize-cmd').textContent =
-        `docker exec -it git_manager bash -c \\\n  "echo '${safe}' >> /root/.ssh/authorized_keys && \\\n  chmod 600 /root/.ssh/authorized_keys"`;
-}
-
-function copyAllSteps() {
-    const allCmds = [
-        '# ① Générer la clé locale',
-        `ssh-keygen -t ed25519 -C "relay-{{ repo.name }}" -f ~/.ssh/relay_{{ repo.name|lower }} -N ""`,
-        '',
-        '# ③ ~/.ssh/config',
-        document.getElementById('ssh-config-cmd').textContent,
-        '',
-        '# ④ Ajouter remote',
-        document.getElementById('add-remote-cmd').textContent,
-        '',
-        '# ⑤ Pousser',
-        'git push relay main',
-    ].join('\n');
-    document.getElementById('all-cmds').textContent = allCmds;
-    document.getElementById('all-cmds-result').style.display = 'block';
-    navigator.clipboard.writeText(allCmds);
 }
 
 function testRemote(pk, name) {
@@ -336,11 +253,12 @@ function fetchRemote(pk, name) {
     fetch(`/remotes/${pk}/fetch/`)
         .then(r => r.json())
         .then(d => {
-            const msg = d.success
-                ? `✅ Fetch ${name} réussi`
-                : `❌ Fetch ${name} échoué: ${d.error}`;
-            alert(msg);
-            btn.textContent = '⬇ Fetch ' + name; btn.disabled = false;
+            if (d.success) {
+                location.reload();
+            } else {
+                alert('❌ Fetch ' + name + ' échoué: ' + d.error);
+                btn.textContent = '⬇ Fetch ' + name; btn.disabled = false;
+            }
         })
         .catch(e => {
             alert('❌ Erreur: ' + e.message);
@@ -368,7 +286,5 @@ function pullRemote(pk, name) {
         });
 }
 
-// Ouvrir la première étape par défaut
-toggleStep(1);
 </script>
 {% endblock %}
