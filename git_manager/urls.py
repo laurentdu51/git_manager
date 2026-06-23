@@ -15,6 +15,7 @@ urlpatterns = [
     path('repos/create/', views.create_repo, name='create_repo'),
     path('repos/clone/', views.clone_repo, name='clone_repo'),
     path('repos/<int:pk>/', views.repo_detail, name='repo_detail'),
+    path('repos/<int:pk>/tree/', views.repo_tree, name='repo_tree'),
     path('repos/<int:pk>/delete/', views.delete_repo, name='delete_repo'),
     
     # Remotes

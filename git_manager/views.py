@@ -494,6 +494,18 @@ def ssh_local_view(request):
         'ssh_command': f'ssh -p {ssh_port} -o StrictHostKeyChecking=no root@{server_ip}',
     })
 
+# ── Arborescence ────────────────────────────────────────────────────────
+
+def repo_tree(request, pk):
+    """Retourne le contenu d'un dossier de l'arbre Git en JSON."""
+    repo = get_object_or_404(GitRepo, pk=pk)
+    svc = GitService(repo.path)
+    if not svc.is_git_repo():
+        return JsonResponse({'error': "Pas un dépôt Git"}, status=400)
+    path = request.GET.get('path', '.')
+    tree = svc.list_tree(path)
+    return JsonResponse({'path': path, 'entries': tree})
+
 # ── Healthcheck ──────────────────────────────────────────────────────────
 
 def api_health(request):

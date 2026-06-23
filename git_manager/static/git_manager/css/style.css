@@ -72,3 +72,18 @@ details.log-output[open] summary::before{transform:rotate(90deg)}
 details.log-output pre{background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--text);font-size:.72rem;max-height:160px;overflow-y:auto;padding:12px 14px;white-space:pre-wrap;word-break:break-word;margin-top:8px}
 .hash{color:var(--accent2);font-size:.71rem}
 .muted{color:var(--muted);font-size:.74rem}
+
+/* ── Tree view ───────────────────────────────────────────────── */
+.tree{font-size:.76rem;line-height:1.6}
+.tree-loader{color:var(--muted);font-size:.72rem;padding:4px 0}
+.tree-empty{color:var(--muted);font-size:.72rem;padding:4px 0}
+.tree-list{}
+.tree-item{padding:2px 0;white-space:nowrap;cursor:default;display:flex;align-items:center;gap:4px}
+.tree-item:hover{background:var(--surface2);border-radius:4px}
+.tree-dir{cursor:pointer}
+.tree-dir:hover{color:var(--accent2)}
+.tree-toggle{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;font-size:.6rem;color:var(--muted);flex-shrink:0;transition:transform .15s}
+.tree-toggle-spacer{visibility:hidden}
+.tree-open>.tree-toggle{color:var(--accent)}
+.tree-sub{margin-left:18px;border-left:1px solid var(--border);padding-left:8px}
+.tree-size{color:var(--muted);font-size:.65rem;margin-left:4px}

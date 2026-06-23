@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: git-manager-web
+  namespace: git-manager
+spec:
+  selector:
+    app: git-manager
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: NodePort

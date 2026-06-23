@@ -201,6 +201,30 @@ class GitService:
         return result
 
 
+    def list_tree(self, path: str = '.') -> list:
+        """Liste le contenu d'un répertoire dans l'arbre Git."""
+        r = self._run(['git', 'ls-tree', 'HEAD', '-l', path])
+        entries = []
+        if r['success']:
+            for line in r['stdout'].splitlines():
+                parts = line.split(None, 4)
+                if len(parts) >= 5:
+                    mode, obj_type, hash_, size, name = parts
+                    display_name = name
+                    if path != '.' and path != '/':
+                        prefix = path.rstrip('/') + '/'
+                        if name.startswith(prefix):
+                            display_name = name[len(prefix):]
+                    entries.append({
+                        'mode': mode,
+                        'type': obj_type,
+                        'hash': hash_,
+                        'size': size,
+                        'path': name,
+                        'name': display_name,
+                    })
+        return entries
+
     def list_remote_branches(self) -> list:
         """Liste les branches distantes (remote-tracking) triées par remote."""
         r = self._run(['git', 'branch', '-r', '-v', '--no-color'])

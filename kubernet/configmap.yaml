@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: git-manager-config
+  namespace: git-manager
+data:
+  DEBUG: "False"
+  ALLOWED_HOSTS: "*"
+  DB_ENGINE: "sqlite"
+  SQLITE_PATH: "/app/data/db.sqlite3"
+  USE_WHITENOISE: "True"
+  GIT_USER_EMAIL: "contact@duhaz.fr"
+  GIT_USER_NAME: "Git Manager"
+  GUNICORN_WORKERS: "2"
+  ENABLE_SSH_SERVER: "true"
+  CRON_SCHEDULE: "*/15 * * * *"

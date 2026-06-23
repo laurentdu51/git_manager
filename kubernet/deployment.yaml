@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: git-manager
+  namespace: git-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: git-manager
+  template:
+    metadata:
+      labels:
+        app: git-manager
+    spec:
+      containers:
+        - name: django
+          image: 127.0.0.1:30500/git-manager:latest
+          imagePullPolicy: Always
+          command: ["/entrypoint.sh"]
+          envFrom:
+            - configMapRef:
+                name: git-manager-config
+            - secretRef:
+                name: git-manager-secret
+          resources:
+            requests:
+              cpu: 100m
+              memory: 200Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          ports:
+            - containerPort: 8000
+              name: web
+            - containerPort: 22
+              name: ssh
+          volumeMounts:
+            - name: sqlite
+              mountPath: /app/data
+            - name: ssh
+              mountPath: /root/.ssh
+            - name: repos
+              mountPath: /repos
+          livenessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 45
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+      volumes:
+        - name: sqlite
+          persistentVolumeClaim:
+            claimName: git-manager-sqlite
+        - name: ssh
+          persistentVolumeClaim:
+            claimName: git-manager-ssh
+        - name: repos
+          persistentVolumeClaim:
+            claimName: git-manager-repos

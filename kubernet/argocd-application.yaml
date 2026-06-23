@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: git-manager
+  namespace: argocd
+spec:
+  destination:
+    namespace: git-manager
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: git-manager/kubernet
+    repoURL: ssh://root@vm2:2222/repot/k8s-manifests
+    targetRevision: main
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+      limit: 5
+    syncOptions:
+      - CreateNamespace=true

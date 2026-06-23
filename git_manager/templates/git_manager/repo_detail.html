@@ -112,6 +112,19 @@
 
 </div>
 
+<!-- Arborescence -->
+{% if is_git %}
+<div class="card">
+    <div class="card-title" style="justify-content:space-between">
+        <span>📁 Arborescence</span>
+        <span class="muted" style="font-size:.65rem;cursor:pointer" onclick="loadTree({{ repo.pk }}, '.')">⟳ Recharger</span>
+    </div>
+    <div id="git-tree" class="tree" data-pk="{{ repo.pk }}">
+        <div class="tree-loader">Chargement…</div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Branches distantes -->
 {% if remote_branches %}
 <div class="card">
